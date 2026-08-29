@@ -27,7 +27,8 @@
 | Strict compile | `mix compile --warnings-as-errors` | pass | 2026-08-29 |
 | Tests | `mix test` | pass; 112 passed | 2026-08-29 |
 | Release | `MIX_ENV=prod mix release --overwrite` | pass; release assembled | 2026-08-29 |
-| Docker image | `docker compose up --build -d` | full runtime not run locally; documented host/container compatibility constraint remains | 2026-08-29 |
+| Docker image | `docker build --pull --tag learning-agent:ci .` | pass; production image built | 2026-08-29 |
+| Compose runtime | `docker compose up --build -d` | not run locally; readiness probe remains pending | 2026-08-29 |
 | Dockerfile syntax | `docker build --check .` | pass; no warnings | 2026-08-29 |
 | Qodana | `.github/workflows/qodana.yml` | configured; not run locally | 2026-08-29 |
 | Codebase Memory graph | `index_status` | pass; project `learning-agent` ready, 1418 nodes/2109 edges; `Dockerfile:31` parse-partial caveat | 2026-08-29 |
@@ -56,7 +57,7 @@
 
 | Work | Blocker | Since | Owner | Unblock path |
 |---|---|---|---|---|
-| Full container acceptance | Current sandbox has Hex TLS/runtime compatibility constraints | 2026-08-29 | deployment environment | run GitHub Actions or a normal compatible CI/host |
+| Full Compose acceptance | Service startup/readiness has not been probed in this session | 2026-08-29 | deployment environment | run `docker compose up --build -d` and check both health endpoints |
 | Live external learning | Production MCP/provider/OpenViking endpoints and budgets are not recorded | 2026-08-29 | project operator | select credentials, endpoints, models, and cost limits |
 
 ## Open Questions
@@ -95,7 +96,7 @@
 ## Session Handoff
 
 **Last Session:** 2026-08-29
-**Next Session Priority:** Review the generated artifacts and scoped diff; then commit/push only with explicit approval.
+**Next Session Priority:** Review the CI repair and hosted checks; then commit/push only with explicit approval.
 **Known Issues:** Full Docker Compose readiness and Qodana are not locally run; Codebase Memory has a parse-partial caveat for `Dockerfile:31`.
 **Read first:** `AGENTS.md`, `.pi/project.md`, `.pi/tech-stack.md`, `.pi/roadmap.md`, `docs/06-implementation-roadmap.md`.
 **Context Links:** `DESIGN.md`, `README.md`, `.github/workflows/pr-quality.yml`, `.github/workflows/qodana.yml`, `https://github.com/ryan-brosas/elixir-learning-agent`.

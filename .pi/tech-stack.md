@@ -6,7 +6,7 @@ This is the detected stack for the checkout. Project dependencies are separated 
 
 - **Framework:** OTP application with Ecto SQL and Plug Cowboy; Phoenix LiveView is designed but not yet present — Evidence: `mix.exs:16-20`, `lib/learning_agent/application.ex:15-43`, `lib/learning_agent_web/router.ex:1-9`, `docs/07-frontend-control-plane.md`.
 - **Language:** Elixir `~> 1.20` — Evidence: `mix.exs:4-8`.
-- **Runtime:** Local probe: Elixir 1.20.3 on Erlang/OTP 29; Dockerfile pins the build/runtime image to Elixir 1.20.4 on OTP 27.2.4 — Evidence: `elixir --version`, `Dockerfile:7-18`.
+- **Runtime:** Local probe: Elixir 1.20.3 on Erlang/OTP 29; Dockerfile pins the build/runtime image to Elixir 1.20.4 on OTP 29.0.5 — Evidence: `elixir --version`, `Dockerfile:7-18`.
 - **Project manifest:** `mix.exs` with `mix.lock` — Evidence: repository root.
 
 ## Project Dependencies vs Host Tools
@@ -49,13 +49,14 @@ This is the detected stack for the checkout. Project dependencies are separated 
 | `mix test` | works | ExUnit + PostgreSQL integration suite | exit 0, 112 passed, 2026-08-29 |
 | `MIX_ENV=prod mix release --overwrite` | works | assemble OTP release | exit 0, release created, 2026-08-29 |
 | `docker compose config --quiet` | works | validate service topology | exit 0, 2026-08-29 |
-| `docker compose up --build -d` | blocked locally | full container/readiness acceptance | not run: host Hex/TLS/runtime compatibility blocker documented in roadmap |
+| `docker build --pull --tag learning-agent:ci .` | works | build the production image | exit 0, 2026-08-29 |
+| `docker compose up --build -d` | not run locally | full container/readiness acceptance | image build passes; service startup/readiness still pending, 2026-08-29 |
 | `mix lint` / typecheck | none | no separate lint/typecheck task is configured | no task in `mix.exs` |
 | Qodana scan | configured, not run | IDE inspection quality gate | no local Qodana run |
 
 ## CI
 
-- **Workflows:** `.github/workflows/pr-quality.yml` (Beam/test/release/container gate), `.github/workflows/pr-title.yml` (title grammar), `.github/workflows/qodana.yml` (optional token-gated IDE analysis), `.github/workflows/dependency-review.yml` (pull-request dependency review) — Evidence: generated from this initialization.
+- **Workflows:** `.github/workflows/pr-quality.yml` (Beam/test/release/container gate), `.github/workflows/pr-title.yml` (title grammar), `.github/workflows/qodana.yml` (optional token-gated IDE analysis), `.github/workflows/dependency-review.yml` (capability-gated pull-request dependency review) — Evidence: generated from this initialization.
 - **Local reproduction:** `docker compose config --quiet && mix format --check-formatted && mix compile --warnings-as-errors && mix test && MIX_ENV=prod mix release --overwrite`; CI additionally uses a PostgreSQL service and builds the Docker image.
 
 ## Generated Files

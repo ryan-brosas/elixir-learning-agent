@@ -39,7 +39,7 @@ curl http://localhost:4000/health/live
 curl http://localhost:4000/health/ready
 ```
 
-A full container build is exercised in GitHub Actions. It was not counted as locally verified when the current host could not reach Hex with a compatible TLS chain.
+The production container image now builds locally and in GitHub Actions. Full Compose startup/readiness remains a separate deployment probe.
 
 ## Why
 

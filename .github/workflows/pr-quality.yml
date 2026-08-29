@@ -50,10 +50,9 @@ jobs:
       - name: Set up Erlang and Elixir
         uses: erlef/setup-beam@v1
         with:
-          otp-version: '27.2'
+          otp-version: '29.0.5'
           elixir-version: '1.20.4'
           version-type: strict
-          cache: true
 
       - name: Fetch dependencies
         run: |

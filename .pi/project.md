@@ -12,7 +12,7 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 ## Success Criteria
 
 1. **Deterministic safety core** — The test suite proves durable transitions, lease fencing, cancellation, note-first ordering, artifact parity, tool denial, MCP framing, and outbox retry behavior. Verified by `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix test`.
-2. **Runnable service boundary** — A production release assembles and the Compose topology validates. Verified by `MIX_ENV=prod mix release --overwrite` and `docker compose config --quiet`; a full build/readiness run is a CI and deployment-host check.
+2. **Runnable service boundary** — A production release assembles, the Compose topology validates, and the production image builds. Verified by `MIX_ENV=prod mix release --overwrite`, `docker compose config --quiet`, and `docker build --pull --tag learning-agent:ci .`; full Compose startup/readiness remains pending.
 3. **Honest learning closure** — A future complete run can only close from persisted evidence, coverage, adjudications, artifact parity, and retrieval verification; unknown, partial, stale, or blocked work remains non-complete. Evidence: `docs/01-domain-state-and-closure.md`, `docs/05-testing-and-verification.md`, and the domain tests.
 
 ## Target Users
@@ -146,7 +146,7 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 
 ## Known Risks and Hotspots
 
-- Docker/Hex runtime compatibility and full Compose readiness are not locally verified on the current host; CI must remain the proving environment.
+- Full Compose startup/readiness and Qodana are not locally verified; the OTP29.0.5 production image build is locally verified and remains covered by CI.
 - The source design is broader than the current runtime: LiveView, multi-provider routing, exhaustive closure, and external transport wiring remain significant work.
 - Artifact activation is documented as atomic-ish with recovery tradeoffs; full fault-injection coverage is incomplete.
 - Authentication is bearer-token role gating, but deployment identity/reverse-proxy integration is still open.
