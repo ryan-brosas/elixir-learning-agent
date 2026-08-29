@@ -35,7 +35,7 @@
 | JetBrains MCP | `steroid_list_projects`, `steroid_list_windows` | pass; project open/indexed | 2026-08-29 |
 | OpenViking | `find` + `read` | pass; prior-art hit returned and a URI was read | 2026-08-29 |
 
-**Pending checks:** GitHub Actions must prove the hosted Beam/database/container contract; Qodana remains token-gated and supplementary. Full Compose readiness is still not locally run. Re-index the active repository only when the graph is stale or explicitly requested.
+**Pending checks:** Full Compose readiness is still not locally run; Qodana remains token-gated and supplementary. Hosted Beam/database/container, PR-title, dependency-review capability, and Qodana workflows passed on commit `a2d808a` (runs `33234743489`, `33234744999`, `33234745033`, `33234745005`, `33234765861`). Re-index the active repository only when the graph is stale or explicitly requested.
 
 ## Recent Completed Work
 
@@ -44,6 +44,7 @@
 | prior | Deterministic learning runtime foundation | 2026-08-29 | `docs/06-implementation-roadmap.md`; current 112-test suite |
 | prior | Inspection/release hardening | 2026-08-29 | commit `79e5744`; `qodana.yaml`, `Dockerfile`, `bin/server` |
 | init | Deep project initialization and CI bootstrap | 2026-08-29 | template-based artifact set; canonical gate, YAML, text, and Dockerfile checks pass |
+| ci | Hosted CI repair and PR publication | 2026-08-29 | commit `a2d808a`; PR #1; hosted checks pass |
 
 ## Active Decisions
 
@@ -51,7 +52,7 @@
 |---|---|---|---|---|
 | 2026-08-29 | Use canonical templates for project spine, README, PR/issues, and CI | keeps agent/maintainer entrypoints consistent with the host template contract | creates `AGENTS.md`, `.pi/*`, README, `.github/*` | `/home/utopia/.agents/templates/*` |
 | 2026-08-29 | Keep Qodana token-gated and supplementary | inspection exports and Qodana are useful but must not replace executable gates | no secret is required for normal CI quality | `qodana.yaml`, `.github/workflows/qodana.yml` |
-| 2026-08-29 | Treat active Codebase Memory indexing as an explicit follow-up | live probe reported the repository is not indexed | no graph claims are made for this checkout | MCP `index_status` output |
+| 2026-08-29 | Treat Codebase Memory caveats explicitly | project `learning-agent` is ready with 1418 nodes/2109 edges; `Dockerfile:31` is parse-partial | graph remains navigation evidence and flagged ranges require local confirmation | MCP `index_status`, `search_graph`, `trace_path`, and `get_code_snippet` |
 
 ## Blockers
 
@@ -90,13 +91,13 @@
 
 1. [x] Run the post-init canonical completion command and inspect all results.
 2. [x] Parse/check all GitHub workflow YAML, scan generated text, and review `git diff --check`.
-3. [ ] Review/stage this scoped diff; commit, push, or open a PR only when explicitly requested.
+3. [x] Review/stage the scoped diff, commit, push, and update PR #1 as explicitly requested.
 4. [ ] Define live external credentials/budgets before autonomous turns; re-index only if the active graph becomes stale.
 
 ## Session Handoff
 
 **Last Session:** 2026-08-29
-**Next Session Priority:** Review the CI repair and hosted checks; then commit/push only with explicit approval.
+**Next Session Priority:** Review PR #1 and remaining product/deployment decisions; no further GitHub mutation is pending.
 **Known Issues:** Full Docker Compose readiness and Qodana are not locally run; Codebase Memory has a parse-partial caveat for `Dockerfile:31`.
 **Read first:** `AGENTS.md`, `.pi/project.md`, `.pi/tech-stack.md`, `.pi/roadmap.md`, `docs/06-implementation-roadmap.md`.
 **Context Links:** `DESIGN.md`, `README.md`, `.github/workflows/pr-quality.yml`, `.github/workflows/qodana.yml`, `https://github.com/ryan-brosas/elixir-learning-agent`.
