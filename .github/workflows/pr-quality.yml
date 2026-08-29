@@ -1,0 +1,106 @@
+name: Project quality
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Elixir, database, and container gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: learning_agent
+          POSTGRES_PASSWORD: learning_agent
+          POSTGRES_DB: learning_agent_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U learning_agent -d learning_agent_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      MIX_ENV: test
+      LA_DB_HOST: 127.0.0.1
+      LA_DB_PORT: 5432
+      LA_DB_USER: learning_agent
+      LA_DB_PASS: learning_agent
+      LA_DB_NAME: learning_agent_test
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Erlang and Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: '27.2'
+          elixir-version: '1.20.4'
+          version-type: strict
+          cache: true
+
+      - name: Fetch dependencies
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Prepare the test database
+        run: |
+          mix ecto.create
+          mix ecto.migrate
+
+      - name: Run the project gate
+        run: |
+          mix format --check-formatted
+          mix compile --warnings-as-errors
+          mix test
+
+      - name: Assemble the production release
+        env:
+          MIX_ENV: prod
+        run: mix release --overwrite
+
+      - name: Validate Compose and build the image
+        run: |
+          docker compose config --quiet
+          docker build --pull --tag learning-agent:ci .
+
+      - name: Check changed lines
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          zero_sha=0000000000000000000000000000000000000000
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            git diff --check "$BASE_SHA...$GITHUB_SHA"
+          elif [[ -n "${GITHUB_EVENT_BEFORE:-}" && "$GITHUB_EVENT_BEFORE" != "$zero_sha" ]]; then
+            git diff --check "$GITHUB_EVENT_BEFORE" "$GITHUB_SHA"
+          else
+            git diff --check "$GITHUB_SHA^" "$GITHUB_SHA"
+          fi
+
+      - name: Check the PR body contract
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          python3 -c 'import os,sys; body=os.environ.get("PR_BODY",""); required=("## Summary","## Changed files","## Screenshots","## Verification","## CI state","## Codebase observation","## GitHub metadata","## Notes for the reviewer"); missing=[x for x in required if x not in body]; print("required sections: pass" if not missing else "missing sections: "+", ".join(missing)); sys.exit(bool(missing))'

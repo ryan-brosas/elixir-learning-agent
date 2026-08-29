@@ -1,0 +1,53 @@
+name: Qodana
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  qodana:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
+    steps:
+      - name: Check whether Qodana is configured
+        run: |
+          if [[ -n "$QODANA_TOKEN" ]]; then
+            echo "QODANA_TOKEN is configured; running the scan."
+          else
+            echo "QODANA_TOKEN is not configured; Qodana remains supplementary and is skipped."
+          fi
+
+      - name: Check out the repository
+        if: env.QODANA_TOKEN != ''
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Qodana scan
+        if: env.QODANA_TOKEN != ''
+        uses: JetBrains/qodana-action@v2026.2
+        with:
+          pr-mode: true
+          use-caches: true
+          post-pr-comment: true
+          use-annotations: true
+          upload-result: false
+          push-fixes: none
+
+      - name: Explain the skipped scan
+        if: env.QODANA_TOKEN == ''
+        run: echo "No Qodana token is configured; use the exported inspections and executable project gate instead."

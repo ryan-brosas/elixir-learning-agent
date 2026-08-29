@@ -1,0 +1,31 @@
+name: Pull request title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate conventional title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          title = os.environ.get("TITLE", "").strip()
+          pattern = re.compile(r"^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert|release|wip)(\([a-z0-9_-]+\))?!?:\s+\S.+$")
+          if not pattern.match(title):
+              print("Invalid PR title: use '<type>(<scope>): summary' or '<type>: summary'.", file=sys.stderr)
+              print("Allowed types: feat, fix, docs, style, refactor, perf, test, chore, ci, build, revert, release, wip", file=sys.stderr)
+              raise SystemExit(1)
+          print(f"PR title OK: {title}")
+          PY
