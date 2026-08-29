@@ -26,3 +26,6 @@ learning_agent-*.tar
 # Local Pi/Fabric runtime state.
 .pi/fabric/
 .pi/fabric.json
+
+# Local IDE inspection exports.
+/inspections/

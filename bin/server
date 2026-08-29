@@ -1,14 +1,16 @@
 #!/bin/sh
     # Container entrypoint: run migrations then start the release foreground.
-    set -e
-    
+    set -eu
+
+    RELEASE_ROOT="${RELEASE_ROOT:-/app/rel}"
+    RELEASE_BIN="$RELEASE_ROOT/bin/learning_agent"
+
     # Wait for the DB, then run migrations; release runs web+all roles (all-in-one).
-    until $RELEASE_ROOT/bin/learning_agent eval 'LearningAgent.Repo.query("SELECT 1")' >/dev/null 2>&1; do
+    until "$RELEASE_BIN" eval 'Application.ensure_all_started(:ecto_sql); {:ok, _} = LearningAgent.Repo.start_link(Application.get_env(:learning_agent, LearningAgent.Repo)); LearningAgent.Repo.query("SELECT 1")' >/dev/null 2>&1; do
       echo "waiting for db..."
       sleep 1
     done
-    
-    $RELEASE_ROOT/bin/learning_agent migrate
-    
-    exec "$RELEASE_ROOT/bin/learning_agent" start
-    
+
+    "$RELEASE_BIN" eval 'Application.ensure_all_started(:ecto_sql); {:ok, _} = LearningAgent.Repo.start_link(Application.get_env(:learning_agent, LearningAgent.Repo)); Ecto.Migrator.run(LearningAgent.Repo, Application.app_dir(:learning_agent, "priv/repo/migrations"), :up, all: true)'
+
+    exec "$RELEASE_BIN" start

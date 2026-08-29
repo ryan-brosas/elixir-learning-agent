@@ -9,7 +9,7 @@ FROM hexpm/elixir:1.20.4-erlang-27.2.4-debian-trixie-20260824-slim AS build
 ENV MIX_ENV=prod
 WORKDIR /app
 
-COPY mix.exs mix.lock .
+COPY mix.exs mix.lock ./
 RUN mix local.hex --force && mix deps.get --only prod && mix deps.compile
 
 COPY . .
