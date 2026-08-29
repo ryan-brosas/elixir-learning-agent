@@ -1,0 +1,14 @@
+#!/bin/sh
+    # Container entrypoint: run migrations then start the release foreground.
+    set -e
+    
+    # Wait for the DB, then run migrations; release runs web+all roles (all-in-one).
+    until $RELEASE_ROOT/bin/learning_agent eval 'LearningAgent.Repo.query("SELECT 1")' >/dev/null 2>&1; do
+      echo "waiting for db..."
+      sleep 1
+    done
+    
+    $RELEASE_ROOT/bin/learning_agent migrate
+    
+    exec "$RELEASE_ROOT/bin/learning_agent" start
+    

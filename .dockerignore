@@ -1,0 +1,11 @@
+_build/
+deps/
+node_modules/
+sources/
+state/
+*.tar
+tmp
+.git/
+.elixir_ls/
+docker-compose.yml
+Dockerfile

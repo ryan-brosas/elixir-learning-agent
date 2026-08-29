@@ -1,0 +1,460 @@
+{
+  "intent": {
+    "name": "elixir-learning-agent",
+    "kind": "standalone_repository_learning_agent",
+    "status": "planning",
+    "goal": "Run a Docker-deployed Phoenix/OTP repository-learning system with a LiveView frontend, adjustable worker capacity, multi-provider model routing, evidence-backed multi-pass learning, canonical foundation skills, and OpenViking publication without Hermes or DSH dependencies.",
+    "nonGoals": [
+      "generic coding agent",
+      "source repository mutation",
+      "runtime dependency installation",
+      "general RAG service",
+      "unbounded shell execution",
+      "model delegation of repository judgment",
+      "unverifiable total comprehension claims"
+    ],
+    "authorities": {
+      "behavior": [
+        "direct source",
+        "direct tests",
+        "observed probes"
+      ],
+      "navigation": [
+        "Codebase Memory graph",
+        "OpenViking retrieval"
+      ],
+      "workflow": [
+        "SQL durable state",
+        "artifact manifests",
+        "publication journals"
+      ]
+    },
+    "requiredSurfaces": [
+      "Phoenix LiveView operations frontend",
+      "JSON operator API",
+      "internal scheduler",
+      "repository pass workers",
+      "multi-provider model router",
+      "Codebase Memory MCP client",
+      "artifact publisher",
+      "OpenViking outbox"
+    ]
+  },
+  "layout": {
+    "style": "modular_otp_monolith",
+    "runtime": "Elixir OTP release",
+    "deployment": "Required Docker Compose deployment with an all-in-one default and role-scaled profile",
+    "modules": [
+      {
+        "name": "LearningAgent.Application",
+        "owns": "supervision composition"
+      },
+      {
+        "name": "LearningAgent.Config",
+        "owns": "validated runtime configuration"
+      },
+      {
+        "name": "LearningAgent.Repo",
+        "owns": "SQL connectivity"
+      },
+      {
+        "name": "LearningAgent.Repositories",
+        "owns": "repository registry and pins"
+      },
+      {
+        "name": "LearningAgent.Runs",
+        "owns": "run state transitions and cancellation"
+      },
+      {
+        "name": "LearningAgent.Scheduler",
+        "owns": "durable admission"
+      },
+      {
+        "name": "LearningAgent.Leases",
+        "owns": "fenced repository leases"
+      },
+      {
+        "name": "LearningAgent.RunSupervisor",
+        "owns": "dynamic pass workers"
+      },
+      {
+        "name": "LearningAgent.RunWorker",
+        "owns": "one repository pass"
+      },
+      {
+        "name": "LearningAgent.AgentLoop",
+        "owns": "bounded model-tool loop"
+      },
+      {
+        "name": "LearningAgent.ToolPolicy",
+        "owns": "tool authorization"
+      },
+      {
+        "name": "LearningAgent.MCP.CodebaseMemory",
+        "owns": "typed graph operations"
+      },
+      {
+        "name": "LearningAgent.SourceReader",
+        "owns": "bounded read-only source access"
+      },
+      {
+        "name": "LearningAgent.Inventory",
+        "owns": "subsystem and seam adjudication"
+      },
+      {
+        "name": "LearningAgent.Evidence",
+        "owns": "immutable observations"
+      },
+      {
+        "name": "LearningAgent.Notes",
+        "owns": "note-first records"
+      },
+      {
+        "name": "LearningAgent.Skills.Synthesizer",
+        "owns": "capsule and leaf proposals"
+      },
+      {
+        "name": "LearningAgent.Skills.Validator",
+        "owns": "shape, evidence, and parity checks"
+      },
+      {
+        "name": "LearningAgent.Artifacts.Publisher",
+        "owns": "recoverable generation activation"
+      },
+      {
+        "name": "LearningAgent.OpenViking.Outbox",
+        "owns": "durable publication intents"
+      },
+      {
+        "name": "LearningAgent.OpenViking.Publisher",
+        "owns": "remote delivery and retrieval verification"
+      },
+      {
+        "name": "LearningAgent.Recovery",
+        "owns": "orphan and publication reconciliation"
+      },
+      {
+        "name": "LearningAgentWeb.Router",
+        "owns": "operator API and health endpoints"
+      },
+      {
+        "name": "LearningAgent.Provider.Registry",
+        "owns": "provider and model profiles"
+      },
+      {
+        "name": "LearningAgent.ModelRouter",
+        "owns": "capability-aware route selection and fallback"
+      },
+      {
+        "name": "LearningAgent.CapacityManager",
+        "owns": "runtime-adjustable global, instance, provider, and model concurrency"
+      },
+      {
+        "name": "LearningAgent.Instances",
+        "owns": "replica roles, heartbeats, slots, and drains"
+      },
+      {
+        "name": "LearningAgentWeb.Live",
+        "owns": "Phoenix LiveView operations frontend"
+      }
+    ],
+    "supervision": {
+      "strategy": "one_for_one",
+      "children": [
+        "LearningAgent.Repo",
+        "LearningAgent.Telemetry",
+        "LearningAgent.MCP.Supervisor",
+        "LearningAgent.Provider.Supervisor",
+        "LearningAgent.LeaseRenewer",
+        "LearningAgent.Recovery",
+        "LearningAgent.RunSupervisor",
+        "LearningAgent.Scheduler",
+        "LearningAgent.OpenViking.Supervisor",
+        "LearningAgentWeb.Endpoint",
+        "LearningAgent.Provider.Registry",
+        "LearningAgent.ModelRouter",
+        "LearningAgent.CapacityManager",
+        "LearningAgent.Instances"
+      ]
+    },
+    "roles": {
+      "default": [
+        "web",
+        "scheduler",
+        "worker",
+        "publisher"
+      ],
+      "scalable": [
+        "web",
+        "scheduler",
+        "worker",
+        "publisher"
+      ]
+    }
+  },
+  "context": {
+    "verifiedInputs": [
+      "/home/utopia/.agents/skills/memory-graph-skill-miner/SKILL.md",
+      "/home/utopia/.agents/skills/foundations-workflow/SKILL.md",
+      "/home/utopia/.agents/templates/foundation-skill.md",
+      "/home/utopia/.agents/templates/foundation-capsule.md",
+      "Codebase Memory MCP tool schemas observed during planning",
+      "OpenViking memadd, memfind, memread, and related tool schemas observed during planning"
+    ],
+    "decisionsRequired": [
+      "cost and wall-time budget defaults (D-010) before late production provider turns",
+      "skill activation strategy probe: symlink vs directory replacement (D-006)",
+      "direct test execution policy",
+      "enabled provider credentials and initial model profile wire identifiers",
+      "Phoenix visual design and authentication mechanism"
+    ],
+    "m0DecisionRecord": "docs/09-decision-record.md",
+    "decisionsAccepted": [
+      "D001 PostgreSQL-first; SQLite alternative profile only",
+      "D002 Codebase Memory MCP transport verified live (project/qualified_name arg contract)",
+      "D003 provider registry-first, OpenAI-compatible adapter first, explicit selection + ordered fallback",
+      "D004 OpenViking MCP transport verified live",
+      "D005 source = Codebase Memory indexed identities + snippet reads, no arbitrary local mounts",
+      "D008 D010 runtime-adjustable per-provider and per-model concurrency limits (10/10, 6 validated shapes)"
+    ]
+  },
+  "types": {
+    "Repository": [
+      "id",
+      "slug",
+      "source_locator",
+      "graph_project",
+      "status",
+      "active_pin_id",
+      "active_generation_id"
+    ],
+    "RepositoryPin": [
+      "root",
+      "branch",
+      "commit_sha",
+      "graph_generation",
+      "coverage_digest"
+    ],
+    "Run": [
+      "id",
+      "repository_id",
+      "pin_id",
+      "pass_number",
+      "state",
+      "gate",
+      "lease_epoch",
+      "cancel_requested"
+    ],
+    "Lease": [
+      "repository_id",
+      "run_id",
+      "holder_id",
+      "epoch",
+      "expires_at"
+    ],
+    "InventoryItem": [
+      "kind",
+      "stable_key",
+      "discovery_state",
+      "adjudication_state",
+      "reason_code"
+    ],
+    "Claim": [
+      "statement",
+      "boundary",
+      "source_path",
+      "source_symbol",
+      "source_digest",
+      "authority_state"
+    ],
+    "Evidence": [
+      "kind",
+      "authority_class",
+      "operation",
+      "arguments",
+      "response_digest",
+      "body_or_blob",
+      "pin_id"
+    ],
+    "LearningNote": [
+      "run_id",
+      "content",
+      "content_digest",
+      "file_path",
+      "file_digest",
+      "status"
+    ],
+    "ArtifactSet": [
+      "run_id",
+      "learning_note_id",
+      "generation",
+      "manifest_digest",
+      "state",
+      "staging_path",
+      "active_path"
+    ],
+    "OutboxEvent": [
+      "idempotency_key",
+      "event_type",
+      "destination",
+      "payload",
+      "state",
+      "attempt_count"
+    ],
+    "ProviderProfile": [
+      "id",
+      "adapter",
+      "base_url",
+      "credential_ref",
+      "enabled",
+      "health",
+      "max_concurrent_requests"
+    ],
+    "ModelProfile": [
+      "id",
+      "provider_profile_id",
+      "wire_model_id",
+      "capabilities",
+      "context_limit",
+      "cost_metadata",
+      "quality_tier",
+      "max_concurrent_requests",
+      "enabled"
+    ],
+    "ModelRoute": [
+      "id",
+      "revision",
+      "strategy",
+      "required_capabilities",
+      "candidates",
+      "max_fallbacks",
+      "cost_ceiling",
+      "enabled"
+    ],
+    "RuntimeSettings": [
+      "revision",
+      "global_worker_limit",
+      "instance_worker_limit",
+      "provider_limits",
+      "model_limits",
+      "admission_paused"
+    ],
+    "Instance": [
+      "id",
+      "roles",
+      "configured_slots",
+      "active_slots",
+      "draining",
+      "last_heartbeat",
+      "build_version"
+    ]
+  },
+  "signatures": {
+    "providerComplete": "complete(ModelRequest.t()) :: {:ok, ModelResponse.t()} | {:error, ProviderError.t()}",
+    "mcpCall": "call(operation(), map(), RequestContext.t()) :: {:ok, MCPResult.t()} | {:error, MCPError.t()}",
+    "sourceRead": "read_range(repo_id(), relative_path(), line_range()) :: {:ok, SourceExcerpt.t()} | {:error, SourceReadError.t()}",
+    "probeRun": "run(probe_spec(), ProbeContext.t()) :: {:ok, ProbeResult.t()} | {:error, ProbeError.t()}",
+    "artifactPublish": "publish(artifact_set_id()) :: {:ok, PublishedGeneration.t()} | {:error, PublicationError.t()}",
+    "openVikingAdd": "add(resource_spec(), idempotency_key()) :: {:ok, remote_ref()} | {:error, OpenVikingError.t()}",
+    "closure": "closed?(repository_id(), pin_id()) :: {:ok, ClosureResult.t()} | {:error, ClosureError.t()}",
+    "routeModel": "select(ModelRoute.t(), RunContext.t(), CapacitySnapshot.t()) :: {:ok, ModelSelection.t()} | {:error, RouteError.t()}",
+    "updateCapacity": "update_capacity(SettingsRevision.t(), OperatorScope.t()) :: {:ok, RuntimeSettings.t()} | {:error, SettingsError.t()}"
+  },
+  "callstacks": {
+    "primaryRun": [
+      "operator queues run",
+      "scheduler claims lease",
+      "run worker verifies source and graph pin",
+      "run worker loads prior inventory",
+      "agent loop publishes learning note",
+      "agent loop explores one connected subsystem",
+      "agent loop gathers source, test, coverage, and probe evidence",
+      "synthesizer builds complete artifact generation",
+      "validator runs evidence, shape, parity, and pressure checks",
+      "publisher activates verified generation",
+      "result transaction updates inventory and inserts OpenViking outbox",
+      "publisher delivers and verifies OpenViking resources",
+      "closure computation determines repository state",
+      "worker releases lease"
+    ],
+    "recovery": [
+      "application starts with scheduler paused",
+      "recovery finds orphaned runs and publication journals",
+      "recovery reconciles notes",
+      "recovery reconciles artifact destinations and backups",
+      "recovery releases expired outbox claims",
+      "recovery requeues only unambiguous work",
+      "scheduler admission starts"
+    ],
+    "cancel": [
+      "operator upserts cancellation intent",
+      "worker observes cancellation checkpoint",
+      "worker stops new external calls",
+      "worker persists completed observation if already obtained",
+      "worker leaves outbox durable",
+      "worker records cancelled terminal state",
+      "worker releases lease"
+    ],
+    "frontend": [
+      "browser connects to Phoenix LiveView",
+      "LiveView authenticates and authorizes operator scope",
+      "LiveView loads durable SQL projection",
+      "context subscribes to scoped PubSub hints",
+      "operator command validates revision and authorization",
+      "domain transaction commits",
+      "post-commit event broadcasts",
+      "LiveView reloads or streams durable state"
+    ],
+    "modelRouting": [
+      "run pins route revision",
+      "router filters disabled, unhealthy, over-capacity, privacy-incompatible, and capability-incompatible profiles",
+      "router selects explicit or ordered candidate",
+      "capacity manager grants global, provider, and model tokens",
+      "provider adapter performs request",
+      "typed failure decides retry, fallback, or terminal result",
+      "usage and routing decision persist",
+      "tokens release in cleanup"
+    ],
+    "dockerScale": [
+      "default compose starts PostgreSQL and one all-role app container",
+      "Phoenix frontend reaches ready on port 4000",
+      "operator changes runtime capacity through LiveView or API",
+      "capacity revision commits and broadcasts",
+      "scheduler reconciles admissions",
+      "optional worker replicas register roles and slots",
+      "shared SQL leases fence repository ownership"
+    ]
+  },
+  "invariants": [
+    "one run studies exactly one repository",
+    "one repository has at most one active fenced lease",
+    "cancellation intent survives cancel-before-start",
+    "a stale lease epoch cannot commit",
+    "source and tests outrank graph and OpenViking evidence",
+    "a graph result alone cannot close a claim",
+    "an artifact set cannot exist without a committed learning note",
+    "synthesis cannot begin before note publication",
+    "unvalidated artifacts cannot become active",
+    "the model cannot invoke unregistered tools",
+    "the model cannot install dependencies or modify source",
+    "the model cannot delegate repository learning",
+    "every cited path receives an index coverage check",
+    "missing infrastructure creates a blocker rather than a pass",
+    "repository completion requires zero unresolved reusable seams",
+    "every omission has a reason and evidence",
+    "every covered seam maps to exactly one valid capsule",
+    "loader, capsule map, and disk references are bidirectionally equal",
+    "OpenViking failure does not erase local success",
+    "every external side effect has durable intent and an idempotency key",
+    "uncertain side effects are reconciled before retry",
+    "source pin changes stale affected completion evidence",
+    "Phoenix LiveView is a required version-one product surface",
+    "Docker Compose must boot the complete system",
+    "multiple provider and model profiles may be active simultaneously",
+    "one selected model owns each turn",
+    "fallback occurs only for typed eligible failures",
+    "runtime capacity changes do not require container restart",
+    "capacity decreases drain active work by default",
+    "adding worker replicas cannot violate one committing pass per repository"
+  ]
+}
