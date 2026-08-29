@@ -44,7 +44,7 @@ A learning pass can be resumed and audited from durable state, with no unsafe so
 
 - [x] `mix format --check-formatted` exits 0.
 - [x] `mix compile --warnings-as-errors` exits 0.
-- [x] `mix test` exits 0 with the current suite (112 tests observed on 2026-08-29).
+- [x] `mix test` exits 0 with the current suite (113 tests observed on 2026-08-29).
 - [x] `MIX_ENV=prod mix release --overwrite` assembles a release.
 
 **Work Areas:**

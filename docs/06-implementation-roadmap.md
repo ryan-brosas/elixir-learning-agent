@@ -815,7 +815,7 @@ Container/Compose scaffolding is correct and validated; a full `docker compose u
 
 Delivered:
 - `Dockerfile` — standard multi-stage hexpm-elixir(1.20.4/OTP29.0.5, trixie/glibc) build → copied prod release into a minimal runtime; non-root `appuser` (u-id 1000), `/state` `/agents/skills` writable, `/sources` read-only. Verified: image builds, runs as `appuser`, boots the release, and waits correctly for the DB.
-- `docker-compose.yml` — `postgres:16-alpine` (healthchecked) + `app` (all-in-one: web+scheduler+worker+publisher, port 4000) + optional `worker` replicas on `--profile scale-out`. `docker compose config` validates clean. La_PG local dev/test DB restored; full `mix test` green (112/112).
+- `docker-compose.yml` — `postgres:16-alpine` (healthchecked) + `app` (all-in-one: web+scheduler+worker+publisher, port 4000) + optional `worker` replicas on `--profile scale-out`. `docker compose config` validates clean. La_PG local dev/test DB restored; full `mix test` green (113/113).
 - `.dockerignore`, `bin/server` entrypoint (waits for DB, runs migrations), runtime/release config.
 
 Blockers observed (sandbox-specific, documented for a normal CI/host):

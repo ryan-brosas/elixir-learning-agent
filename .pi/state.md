@@ -25,7 +25,7 @@
 | Compose syntax | `docker compose config --quiet` | pass | 2026-08-29 |
 | Format | `mix format --check-formatted` | pass | 2026-08-29 |
 | Strict compile | `mix compile --warnings-as-errors` | pass | 2026-08-29 |
-| Tests | `mix test` | pass; 112 passed | 2026-08-29 |
+| Tests | `mix test` | pass; 113 passed | 2026-08-29 |
 | Release | `MIX_ENV=prod mix release --overwrite` | pass; release assembled | 2026-08-29 |
 | Docker image | `docker build --pull --tag learning-agent:ci .` | pass; production image built | 2026-08-29 |
 | Compose runtime | `docker compose up --build -d` | not run locally; readiness probe remains pending | 2026-08-29 |
@@ -41,7 +41,7 @@
 
 | Work | Title | Completed | Evidence |
 |---|---|---|---|
-| prior | Deterministic learning runtime foundation | 2026-08-29 | `docs/06-implementation-roadmap.md`; current 112-test suite |
+| prior | Deterministic learning runtime foundation | 2026-08-29 | `docs/06-implementation-roadmap.md`; current 113-test suite |
 | prior | Inspection/release hardening | 2026-08-29 | commit `79e5744`; `qodana.yaml`, `Dockerfile`, `bin/server` |
 | init | Deep project initialization and CI bootstrap | 2026-08-29 | template-based artifact set; canonical gate, YAML, text, and Dockerfile checks pass |
 | ci | Hosted CI repair and PR publication | 2026-08-29 | commit `a2d808a`; PR #1; hosted checks pass |

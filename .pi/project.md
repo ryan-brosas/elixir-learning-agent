@@ -6,7 +6,7 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 
 - **Goal** — Study one pinned source repository at a time and turn source-confirmed reusable behavior into durable, validated learning artifacts without mutating the source repository.
 - **Status** — Implementation: deterministic runtime foundation complete; autonomous-learning product and container end-to-end acceptance remain partial.
-- **Milestone** — The repository has implemented durable domain state, SQL persistence, scheduling/recovery, Codebase Memory MCP framing, source/tool policy, note-first records, artifact validation/activation, an adapter-first bounded agent loop, an OpenViking outbox seam, and a Plug operator API. Evidence: `docs/06-implementation-roadmap.md` milestone status sections; current verification is `112 passed` from `mix test`.
+- **Milestone** — The repository has implemented durable domain state, SQL persistence, scheduling/recovery, Codebase Memory MCP framing, source/tool policy, note-first records, artifact validation/activation, an adapter-first bounded agent loop, an OpenViking outbox seam, and a Plug operator API. Evidence: `docs/06-implementation-roadmap.md` milestone status sections; current verification is `113 passed` from `mix test`.
 - **Next Milestone** — Complete the remaining deployment and product surfaces: live OpenViking transport, provider families/model routing, exhaustive multi-pass closure, container readiness proof, and the planned LiveView control plane. Evidence: `docs/06-implementation-roadmap.md` milestones 10, 11, 12, 13, and 15.
 
 ## Success Criteria

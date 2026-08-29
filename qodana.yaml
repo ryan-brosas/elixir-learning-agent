@@ -20,7 +20,7 @@ profile:
 #Disable inspections
 exclude:
   # Analyze project-owned source, not vendored or generated artifacts.
-  - name: .*
+  - name: All
     paths:
       - deps/**
       - _build/**

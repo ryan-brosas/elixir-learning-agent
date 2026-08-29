@@ -6,7 +6,7 @@
     RELEASE_BIN="$RELEASE_ROOT/bin/learning_agent"
 
     # Wait for the DB, then run migrations; release runs web+all roles (all-in-one).
-    until "$RELEASE_BIN" eval 'Application.ensure_all_started(:ecto_sql); {:ok, _} = LearningAgent.Repo.start_link(Application.get_env(:learning_agent, LearningAgent.Repo)); LearningAgent.Repo.query("SELECT 1")' >/dev/null 2>&1; do
+    until "$RELEASE_BIN" eval 'Application.ensure_all_started(:ecto_sql); {:ok, _} = LearningAgent.Repo.start_link(Application.get_env(:learning_agent, LearningAgent.Repo)); {:ok, _} = LearningAgent.Repo.query("SELECT 1")' >/dev/null 2>&1; do
       echo "waiting for db..."
       sleep 1
     done

@@ -46,7 +46,7 @@ This is the detected stack for the checkout. Project dependencies are separated 
 | `mix ecto.migrate` | works | apply PostgreSQL schema migrations | `docs/06-implementation-roadmap.md` milestone 2; current test DB is migrated |
 | `mix format --check-formatted` | works | enforce Elixir formatting | exit 0, 2026-08-29 |
 | `mix compile --warnings-as-errors` | works | strict compile gate | exit 0, 2026-08-29 |
-| `mix test` | works | ExUnit + PostgreSQL integration suite | exit 0, 112 passed, 2026-08-29 |
+| `mix test` | works | ExUnit + PostgreSQL integration suite | exit 0, 113 passed, 2026-08-29 |
 | `MIX_ENV=prod mix release --overwrite` | works | assemble OTP release | exit 0, release created, 2026-08-29 |
 | `docker compose config --quiet` | works | validate service topology | exit 0, 2026-08-29 |
 | `docker build --pull --tag learning-agent:ci .` | works | build the production image | exit 0, 2026-08-29 |
