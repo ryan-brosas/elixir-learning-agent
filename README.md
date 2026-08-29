@@ -1,267 +1,146 @@
+<div align="center">
+
 # Elixir Learning Agent
 
-## Status
+**A durable, evidence-backed repository-learning runtime built as an OTP application.**
 
-- Planning-only project.
-- No application code has been implemented.
-- The product is standalone.
-- Hermes cron is not a runtime dependency.
-- DSH Factory is not a runtime dependency.
-- Docker Compose is the required default deployment boundary.
-- A Phoenix LiveView frontend is a required product surface.
-- Elixir and OTP are the proposed implementation platform.
-- Codebase Memory MCP is the primary navigation integration.
-- Source code and direct tests remain authoritative.
-- OpenViking is a secondary publication and context surface.
-- The product is not a RAG application.
+It studies one pinned repository at a time, preserves learning notes and artifacts, and keeps safety, recovery, and honest completion at the center.
 
-## Product statement
+[![Project quality](https://github.com/ryan-brosas/elixir-learning-agent/actions/workflows/pr-quality.yml/badge.svg?branch=main)](https://github.com/ryan-brosas/elixir-learning-agent/actions/workflows/pr-quality.yml)
+[![Elixir](https://img.shields.io/badge/Elixir-1.20-4B275F?logo=elixir)](https://elixir-lang.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)](https://www.postgresql.org/)
 
-Elixir Learning Agent is a durable autonomous agent that studies one indexed source repository at a time, records what it learned, converts source-confirmed reusable behavior into canonical foundation skills, verifies every resulting artifact, and publishes the learning corpus for later retrieval.
+</div>
 
-The system owns its scheduler, agent loop, persistence, recovery, artifact publication, and external integrations.
+## Run
 
-The system does not merely retrieve code snippets.
+The local test and release gates require Elixir 1.20+, a compatible Erlang/OTP runtime, and PostgreSQL reachable at the configured host and port. The checked-in defaults use `127.0.0.1:5433` for local development and `postgres:5432` inside the Compose network.
 
-The system builds an evidence-backed, resumable model of a repository over multiple learning passes.
-
-## Primary outcome
-
-For every admitted repository, the product produces:
-
-- A pinned repository identity.
-- A verified Codebase Memory index identity.
-- A durable subsystem inventory.
-- A durable coverage and closure matrix.
-- Pass-by-pass learning notes.
-- Source-confirmed capsule-v2 references.
-- A canonical foundation `SKILL.md`.
-- A verified loader-to-map-to-disk relationship.
-- Verification records for graph, source, tests, probes, and retrieval.
-- OpenViking resources for each completed pass.
-- An honest terminal state of complete, blocked, failed, cancelled, or stale.
-
-## What complete means
-
-“Learned everything” cannot honestly mean that a model has proven comprehension of every statement.
-
-This design gives the phrase an operational meaning.
-
-A repository may be marked complete only when:
-
-- The repository root, branch, and commit are pinned.
-- The Codebase Memory project matches that pin.
-- Index coverage and exclusions have been recorded.
-- The repository has a bounded subsystem inventory.
-- Every subsystem has been adjudicated.
-- Every reusable seam is covered, omitted with a reason, or blocked.
-- No seam remains unknown, candidate, partial, or stale.
-- Every covered seam has decisive source evidence.
-- Every covered seam has direct test evidence or an explicit test absence caveat.
-- Every capsule has an executed deterministic probe.
-- Every capsule has a live graph retrieval check.
-- Every coverage caveat has been resolved or blocks completion.
-- The skill loader, capsule map, and on-disk references agree.
-- The final closure computation is reproducible from durable records.
-
-This is exhaustive reusable-behavior coverage, not mystical proof of total understanding.
-
-## Core principles
-
-1. Code is ground truth.
-2. Tests pin behavior when available.
-3. The graph is a map, not proof.
-4. Learning notes precede production artifacts.
-5. One pass owns one repository.
-6. One worker owns one active repository lease.
-7. Every claim carries evidence.
-8. Every negative or exhaustive claim checks index coverage.
-9. Missing infrastructure is a blocker, never an invented pass.
-10. No package is installed into a target repository.
-11. No target repository file is modified.
-12. No helper script is generated to fake exploration.
-13. No broad filesystem crawl substitutes for graph-led learning.
-14. No subagent delegates the repository-learning judgment.
-15. OpenViking failure does not erase local learning.
-16. Artifact publication is recoverable and idempotent.
-17. Cancellation intent survives cancel-before-start races.
-18. A stale source pin invalidates affected completion claims.
-19. Every retry is classified before it is attempted.
-20. The system fails closed on scope or policy uncertainty.
-
-## Proposed product boundary
-
-The product includes:
-
-- An operator API.
-- A repository registry.
-- A durable run scheduler.
-- A lease manager.
-- A supervised learning-pass runtime.
-- A bounded LLM tool loop.
-- A Codebase Memory MCP client.
-- A source-range reader.
-- A constrained probe runner interface.
-- A learning-note writer.
-- A skill and capsule synthesizer.
-- An artifact validator.
-- A recoverable artifact publisher.
-- An OpenViking outbox and publisher.
-- Metrics, logs, traces, and health probes.
-
-The product excludes:
-
-- General-purpose shell automation.
-- Editing source repositories.
-- Dependency installation into source repositories.
-- A generic conversational chatbot.
-- A vector database as primary workflow state.
-- Automatic code generation inside source repositories.
-- Hermes-specific scheduling logic.
-- DSH-specific task formats.
-- Unbounded model autonomy.
-
-## Required deployment
-
-The product definition of done requires a runnable Docker Compose stack with:
-
-- One shared Elixir/Phoenix release image.
-- An all-in-one default service that runs web, scheduler, worker, and publisher roles.
-- Optional role-specific services using the same image for horizontal scaling.
-- One PostgreSQL container.
-- A read-only repository volume.
-- A read-write state volume.
-- A read-write skill-catalog volume.
-- Network access to an LLM provider.
-- Network or sidecar access to Codebase Memory MCP.
-- Network access to OpenViking when configured.
-
-PostgreSQL is a proposed baseline, not a user-confirmed requirement.
-
-A single-container SQLite profile remains a documented alternative.
-
-Multi-replica execution is deferred until the single-node correctness gates pass.
-
-## Repository layout proposed for implementation
-
-```text
-elixir-learning-agent/
-├── README.md
-├── DESIGN.md
-├── design.json
-├── docs/
-│   ├── 01-domain-state-and-closure.md
-│   ├── 02-agent-loop-and-mcp.md
-│   ├── 03-storage-artifacts-and-openviking.md
-│   ├── 04-security-deployment-and-observability.md
-│   ├── 05-testing-and-verification.md
-│   ├── 06-implementation-roadmap.md
-│   ├── 07-frontend-control-plane.md
-│   └── 08-model-routing-workers-and-scaling.md
-└── evidence/
-    └── planning-sources.md
+```bash
+mix deps.get
+mix ecto.migrate
+mix format --check-formatted
+mix compile --warnings-as-errors
+mix test
+MIX_ENV=prod mix release --overwrite
 ```
 
-The future Mix project layout is specified in the design documents.
+Validate the deployment configuration without starting services:
 
-It has not been created in this planning task.
+```bash
+docker compose config --quiet
+```
 
-## Planning evidence
+The default Compose stack builds the release image, starts PostgreSQL, runs migrations through `bin/server`, and exposes the operator API on port `4000`:
 
-The design was grounded in these local contracts:
+```bash
+docker compose up --build -d
+curl http://localhost:4000/health/live
+curl http://localhost:4000/health/ready
+```
 
-- `/home/utopia/.agents/skills/memory-graph-skill-miner/SKILL.md`.
-- `/home/utopia/.agents/skills/memory-graph-skill-miner/references/autonomous-lane.md`.
-- `/home/utopia/.agents/skills/memory-graph-skill-miner/references/dsh-factory-lane.md`.
-- `/home/utopia/.agents/skills/foundations-workflow/SKILL.md`.
-- `/home/utopia/.agents/templates/foundation-skill.md`.
-- `/home/utopia/.agents/templates/foundation-capsule.md`.
-- `/home/utopia/.agents/templates/project.md`.
-- `/home/utopia/.agents/skills/agno-foundation/SKILL.md`.
-- `/home/utopia/.agents/skills/changedetection-foundation/SKILL.md`.
-- `/home/utopia/.agents/skills/openhistory-foundation/SKILL.md`.
+The production container image now builds locally and in GitHub Actions. Full Compose startup/readiness remains a separate deployment probe.
 
-The design reused these OpenViking capsules:
+## Why
 
-- `viking://resources/agno-foundation/references/supervisor-run-spine/supervisor-run-spine.md`.
-- `viking://resources/agno-foundation/references/background-manager-chaining/background-manager-chaining.md`.
-- `viking://resources/agno-foundation/references/cancel-before-start-registry/cancel-before-start-registry.md`.
-- `viking://resources/agno-foundation/references/retry-with-guidance/retry-with-guidance.md`.
+Repository-learning automation needs more than retrieval. It needs durable run state, source and test evidence, bounded model capabilities, recoverable artifact publication, and a conservative definition of completion.
 
-The design verified that the current Codebase Memory integration exposes:
+The current implementation already provides the deterministic core:
 
-- `list_projects`.
-- `index_status`.
-- `get_architecture`.
-- `search_graph`.
-- `trace_path`.
-- `get_code_snippet`.
-- `check_index_coverage`.
-- `query_graph`.
+- PostgreSQL/Ecto persistence for repositories, runs, leases, notes, artifacts, and an outbox.
+- Scheduler, supervised run workers, lease renewal, cancellation, and startup recovery.
+- A framed Codebase Memory MCP client with request correlation and typed operations.
+- Bounded source reads and a registered-tool firewall with no generic shell or source-write operation.
+- Note-first Markdown publication with read-back hashing.
+- Capsule-v2 rendering and loader/map/disk parity checks.
+- Recoverable artifact generations and an OpenViking publication outbox seam.
+- Role-gated JSON health and operator endpoints plus telemetry formatting.
 
-The design verified that the current OpenViking integration exposes:
+The full product design remains ahead of the implementation: LiveView operations, additional provider adapters, exhaustive multi-pass closure, and production OpenViking transport wiring are explicit follow-on work rather than hidden claims.
 
-- `memadd`.
-- `memfind`.
-- `memread`.
-- `memsearch`.
-- `memgrep`.
-- `memglob`.
-- `membrowse`.
-- `memqueue`.
+## How it fits
 
-The exact production transport for those capabilities remains a deployment decision.
+```text
+operator / CI
+      │
+      ▼
+Plug operator API ──► durable Ecto contexts ──► PostgreSQL
+                              │
+                              ├── Scheduler ──► RunSupervisor ──► RunWorker
+                              │                                  │
+                              │                                  ├── lease + recovery
+                              │                                  ├── MCP / source / tool policy
+                              │                                  └── notes / skills / artifacts
+                              │
+                              └── Outbox ──► OpenViking client boundary
+```
 
-## Design documents
+Source code is authoritative. The graph is navigation evidence, not behavioral proof. External host tools are optional integrations and are never silently turned into project dependencies.
 
-Read `DESIGN.md` first.
+## Install
 
-Read `docs/01-domain-state-and-closure.md` for the core state algebra.
+### From source
 
-Read `docs/02-agent-loop-and-mcp.md` for tool execution and model control.
+```bash
+git clone https://github.com/ryan-brosas/elixir-learning-agent.git
+cd elixir-learning-agent
+mix deps.get
+```
 
-Read `docs/03-storage-artifacts-and-openviking.md` for durability and publication.
+Configure the database and runtime through environment variables; credentials must stay outside the repository. See [`config/config.exs`](config/config.exs) and [`config/runtime.exs`](config/runtime.exs).
 
-Read `docs/04-security-deployment-and-observability.md` for runtime boundaries.
+### With Docker Compose
 
-Read `docs/05-testing-and-verification.md` for acceptance gates.
+```bash
+docker compose up --build -d
+```
 
-Read `docs/06-implementation-roadmap.md` for staged delivery.
+Compose provides PostgreSQL 16, the all-in-one application service, writable state and skill volumes, and an optional `scale-out` worker profile. Source input is mounted read-only through `SOURCE_VOLUME`.
 
-Read `docs/07-frontend-control-plane.md` for the Phoenix LiveView product surface.
+```bash
+SOURCE_VOLUME=/absolute/path/to/sources docker compose up --build -d
+WORKER_REPLICAS=2 docker compose --profile scale-out up --build -d worker
+```
 
-Read `docs/08-model-routing-workers-and-scaling.md` for multi-provider routing and adjustable worker capacity.
+### IDE and MCP integrations
 
-Read `design.json` for the machine-facing implementation contract.
+The repository is configured for JetBrains inspection exports in the local, ignored `inspections/` directory and has an IntelliJ MCP Steroid project registration. When those host tools are available, use them for IDE navigation, inspections, run/debug feedback, and structural review; do not add them to `mix.exs`.
 
-## Decisions requiring confirmation
+The runtime has explicit seams for Codebase Memory and OpenViking. The optional host-side MCP integrations are useful for graph orientation, source verification, prior-art retrieval, and publication checks, but an unavailable MCP server must be recorded as a degraded capability rather than invented as a passing result.
 
-- `[DECIDED]` PostgreSQL-first persistence (see `docs/09-decision-record.md` #D-001); SQLite stays an appliance alternative profile.
-- `[DECIDED]` Codebase Memory transport is MCP (verified live; `project`/`qualified_name` arg contract observed). See #D-002.
-- `[DECIDED]` Adapter-registry-first; OpenAI-compatible adapter ships first, others behind the `Provider` behavior. See #D-003.
-- `[DECIDED]` OpenViking transport is MCP (verified live: add_resource/find/search/read/...). See #D-004.
-- `[DECIDED]` Source is Codebase Memory indexed identities + snippet reads, not arbitrary local mounts. See #D-005.
-- `[DECIDED]` Activations are symlink-swap (host resolves symlinked leaves; probe + D-006 record). Direct test execution policy still open.
-- `[DECIDED]` Concurrency is runtime-adjustable per-provider AND per-model (e.g. 10/10 for one provider, 6 for another). See #D-008/#D-010.
-- **NEXT:** review the accepted ledger in `docs/09-decision-record.md`; Milestone 1 (Mix scaffold + pure domain) is unblocked pending your go-ahead.
-- Phoenix LiveView is now required for the version-one operations frontend.
-- `[DECISION REQUIRED]` Define the accepted cost budget per repository pass.
+## Usage
 
-## Recommended initial answers
+The unauthenticated health endpoints are:
 
-- PostgreSQL-first for durable leases and transactional outbox.
-- Streamable HTTP MCP when available, stdio sidecar as an adapter.
-- Multiple provider adapters from the first complete release: OpenAI-compatible, Anthropic, Gemini, and local/Ollama-compatible profiles where credentials and capabilities are available.
-- Read-only source mounts.
-- No arbitrary test shell in milestone one.
-- One active pass per repository.
-- Two active repositories globally in the first production pilot, adjustable live without container restart.
-- Phoenix LiveView operations frontend backed by the same domain contexts as the JSON API.
-- JSON API, LiveView event updates, and metrics endpoint.
-- Versioned skill generations with a recoverable activation protocol.
+- `GET /health/live` — process liveness.
+- `GET /health/ready` — database-aware readiness.
 
-These are recommendations, not hidden assumptions.
+The role-gated JSON API includes:
 
-## Next action
+- `GET /v1/repositories` — viewer access.
+- `POST /v1/runs/:id/cancel` — operator access.
+- `POST /v1/runs/:id/resolve-blocker` — operator access.
+- `POST /v1/outbox/:id/retry` — administrator access.
 
-Resolve the blocking decisions in `docs/06-implementation-roadmap.md` before creating the Mix project.
+Bearer-token role configuration is environment-driven; never place tokens in source, fixtures, README files, or Qodana configuration.
+
+## Documentation
+
+- [`DESIGN.md`](DESIGN.md) — complete architecture and invariants.
+- [`docs/01-domain-state-and-closure.md`](docs/01-domain-state-and-closure.md) — state and honest closure.
+- [`docs/02-agent-loop-and-mcp.md`](docs/02-agent-loop-and-mcp.md) — bounded model/tool behavior.
+- [`docs/03-storage-artifacts-and-openviking.md`](docs/03-storage-artifacts-and-openviking.md) — persistence and publication.
+- [`docs/04-security-deployment-and-observability.md`](docs/04-security-deployment-and-observability.md) — security and operations.
+- [`docs/05-testing-and-verification.md`](docs/05-testing-and-verification.md) — acceptance gates.
+- [`docs/06-implementation-roadmap.md`](docs/06-implementation-roadmap.md) — delivery status and next milestones.
+- [`docs/07-frontend-control-plane.md`](docs/07-frontend-control-plane.md) — planned LiveView control plane.
+- [`docs/08-model-routing-workers-and-scaling.md`](docs/08-model-routing-workers-and-scaling.md) — provider and capacity design.
+- [`.pi/project.md`](.pi/project.md) — deep verified project context for agents.
+- [`.pi/tech-stack.md`](.pi/tech-stack.md) — commands, versions, integrations, and constraints.
+- [`AGENTS.md`](AGENTS.md) — short operating spine and canonical completion command.
+
+> **Current status:** the deterministic runtime foundation is implemented and tested. Do not describe the project as a complete autonomous learning product until the open milestones and deployment gates are actually verified.
+
+## License
+
+No license has been selected for this private repository yet. Until a license is added, all rights are reserved; do not redistribute or reuse the code without permission.

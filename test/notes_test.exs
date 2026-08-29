@@ -57,7 +57,7 @@ defmodule LearningAgent.NotesTest do
 
   test "an invalid note (missing required section) is rejected before DB" do
     {_repo, run} = setup_run("n4")
-    assert {:error, missing} = Notes.create(run.id, run.repository_id, "# just a flagament")
+    assert {:error, missing} = Notes.create(run.id, run.repository_id, "# just a fragment")
     refute Enum.empty?(missing)
   end
 

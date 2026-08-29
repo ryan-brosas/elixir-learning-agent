@@ -1,0 +1,59 @@
+name: Dependency review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  capability:
+    name: Detect dependency-review support
+    runs-on: ubuntu-latest
+    outputs:
+      supported: ${{ steps.detect.outputs.supported }}
+    steps:
+      - id: detect
+        name: Detect GitHub Advanced Security support
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data } = await github.rest.repos.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const security = data.security_and_analysis || {};
+            const supported = security.dependency_graph?.status === 'enabled' &&
+              security.advanced_security?.status === 'enabled';
+            core.setOutput('supported', supported ? 'true' : 'false');
+            core.notice(supported
+              ? 'Dependency review is enabled for this repository.'
+              : 'Dependency review is skipped: GitHub Advanced Security/dependency graph is not enabled.');
+
+  review:
+    name: Review dependency changes
+    needs: capability
+    if: needs.capability.outputs.supported == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  unavailable:
+    name: Dependency review unavailable
+    needs: capability
+    if: needs.capability.outputs.supported != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'Dependency review is supplementary and was skipped because the repository does not expose the required GitHub security capability.'

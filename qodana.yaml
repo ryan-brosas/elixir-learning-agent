@@ -18,10 +18,15 @@ profile:
 #  - name: <SomeEnabledInspectionId>
 
 #Disable inspections
-#exclude:
-#  - name: <SomeDisabledInspectionId>
-#    paths:
-#      - <path/where/not/run/inspection>
+exclude:
+  # Analyze project-owned source, not vendored or generated artifacts.
+  - name: All
+    paths:
+      - deps/**
+      - _build/**
+      - cover/**
+      - .pi/**
+      - mix.lock
 
 #Execute shell command before Qodana execution (Applied in CI/CD pipeline)
 #bootstrap: sh ./prepare-qodana.sh
