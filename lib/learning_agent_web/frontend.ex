@@ -999,6 +999,20 @@ defmodule LearningAgentWeb.Frontend do
           if (lanesState.length === 1) {
             lanesState[0].slots = n;
             renderLanes();
+          } else {
+            // Scale every lane's slots proportionally so the total actually
+            // lands (e.g. typing 10 from 40 -> two lanes of 5/5).
+            const current = lanesState.reduce((sum, l) => sum + Number(l.slots) || 1, 0) || 1;
+            let remaining = n;
+            const scaled = lanesState.map((l, i) => {
+              if (i === lanesState.length - 1) return { ...l, slots: remaining };
+              const raw = Math.round((n * (Number(l.slots) || 1)) / current);
+              const slots = Math.max(1, Math.min(raw, remaining - (lanesState.length - 1 - i)));
+              remaining -= slots;
+              return { ...l, slots };
+            });
+            lanesState = scaled;
+            renderLanes();
           }
         });
         $("clear").addEventListener("click", clearSettings);
