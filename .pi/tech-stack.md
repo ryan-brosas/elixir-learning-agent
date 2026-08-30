@@ -4,7 +4,7 @@ This is the detected stack for the checkout. Project dependencies are separated 
 
 ## Framework & Language
 
-- **Framework:** OTP application with Ecto SQL and Plug Cowboy; Phoenix LiveView is designed but not yet present — Evidence: `mix.exs:16-20`, `lib/learning_agent/application.ex:15-43`, `lib/learning_agent_web/router.ex:1-9`, `docs/07-frontend-control-plane.md`.
+- **Framework:** OTP application with Ecto SQL and Plug Cowboy; the current browser surface is dependency-free HTML/JS, while Phoenix LiveView remains designed but not yet present — Evidence: `mix.exs:16-20`, `lib/learning_agent/application.ex:15-43`, `lib/learning_agent_web/router.ex`, `lib/learning_agent_web/frontend.ex`, `docs/07-frontend-control-plane.md`.
 - **Language:** Elixir `~> 1.20` — Evidence: `mix.exs:4-8`.
 - **Runtime:** Local probe: Elixir 1.20.3 on Erlang/OTP 29; Dockerfile pins the build/runtime image to Elixir 1.20.4 on OTP 29.0.5 — Evidence: `elixir --version`, `Dockerfile:7-18`.
 - **Project manifest:** `mix.exs` with `mix.lock` — Evidence: repository root.
@@ -27,16 +27,16 @@ This is the detected stack for the checkout. Project dependencies are separated 
 
 ## Styling & UI
 
-- **CSS:** None.
-- **Components:** None.
-- **Design System:** None. The current HTTP surface is JSON/Plug; LiveView is planned.
+- **CSS:** Inline responsive styles in the dependency-free model playground.
+- **Components:** No component library; the current surface is a small static operator probe.
+- **Design System:** None. The browser probe is intentionally not the planned LiveView operations dashboard.
 
 ## Data & State
 
 - **Database:** PostgreSQL 16 — Evidence: `docker-compose.yml:2-14`, `docs/06-implementation-roadmap.md` milestone 2.
 - **ORM:** Ecto SQL/Postgrex — Evidence: `mix.exs:40-41`, `lib/learning_agent/repo.ex`.
 - **State Management:** Durable SQL contexts plus OTP supervision; no client state library — Evidence: `lib/learning_agent/*_context.ex`, `lib/learning_agent/application.ex`.
-- **API Style:** Plug JSON HTTP API with public health and role-gated `/v1/*` routes — Evidence: `lib/learning_agent_web/router.ex:13-104`.
+- **API Style:** Plug JSON HTTP API with public health, browser HTML at `/`, viewer model catalog, operator model test, and role-gated `/v1/*` routes — Evidence: `lib/learning_agent_web/router.ex`.
 
 ## Commands
 
@@ -46,7 +46,7 @@ This is the detected stack for the checkout. Project dependencies are separated 
 | `mix ecto.migrate` | works | apply PostgreSQL schema migrations | `docs/06-implementation-roadmap.md` milestone 2; current test DB is migrated |
 | `mix format --check-formatted` | works | enforce Elixir formatting | exit 0, 2026-08-29 |
 | `mix compile --warnings-as-errors` | works | strict compile gate | exit 0, 2026-08-29 |
-| `mix test` | works | ExUnit + PostgreSQL integration suite | exit 0, 113 passed, 2026-08-29 |
+| `mix test` | works | ExUnit + PostgreSQL integration suite | exit 0, 129 passed, 2026-08-29 |
 | `MIX_ENV=prod mix release --overwrite` | works | assemble OTP release | exit 0, release created, 2026-08-29 |
 | `docker compose config --quiet` | works | validate service topology | exit 0, 2026-08-29 |
 | `docker build --pull --tag learning-agent:ci .` | works | build the production image | exit 0, 2026-08-29 |
@@ -70,7 +70,7 @@ This is the detected stack for the checkout. Project dependencies are separated 
 - **Unit / integration:** ExUnit, Ecto SQL Sandbox, real PostgreSQL integration, TCP MCP stubs, and Plug.Test — Evidence: `test/` and `test/test_helper.exs`.
 - **E2E:** No dedicated browser or full Compose E2E suite yet — Evidence: `docs/06` milestone 15 and `docs/07`.
 - **Coverage Target:** None configured; do not infer coverage from pass count.
-- **Coverage gaps:** Live external model/OpenViking transport, full container readiness, LiveView/browser flows, and fault-injection completeness remain open.
+- **Coverage gaps:** Live external model/OpenViking transport, full container readiness, LiveView/browser flows, and fault-injection completeness remain open; the static browser/model probe has direct Plug/provider tests.
 
 ## Active Integrations
 

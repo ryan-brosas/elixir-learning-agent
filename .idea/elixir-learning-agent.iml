@@ -3,14 +3,38 @@
   <component name="NewModuleRootManager" inherit-compiler-output="true">
     <exclude-output />
     <content url="file://$MODULE_DIR$">
-        <excludeFolder url="file://$MODULE_DIR$/_build" />
-        <excludeFolder url="file://$MODULE_DIR$/cover" />
-        <excludeFolder url="file://$MODULE_DIR$/deps" />
-        <excludeFolder url="file://$MODULE_DIR$/doc" />
-        <excludeFolder url="file://$MODULE_DIR$/tmp" />
-        <excludeFolder url="file://$MODULE_DIR$/.pi" />
-      </content>
+      <excludeFolder url="file://$MODULE_DIR$/_build" />
+      <excludeFolder url="file://$MODULE_DIR$/cover" />
+      <excludeFolder url="file://$MODULE_DIR$/deps" />
+      <excludeFolder url="file://$MODULE_DIR$/doc" />
+      <excludeFolder url="file://$MODULE_DIR$/tmp" />
+      <excludeFolder url="file://$MODULE_DIR$/.pi" />
+    </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="library" name="stream_data [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="ecto_sql [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="postgrex [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="jason [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="plug_cowboy [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="dialyxir [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="ex_doc [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="excoveralls [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="ecto [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="telemetry [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="decimal [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="db_connection [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="myxql [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="tds [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="makeup_sql [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="benchee [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="benchee_html [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="benchee_json [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="table [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="plug [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="cowboy [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="cowboy_telemetry [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="hackney [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
+    <orderEntry type="library" name="x509 [file:///home/utopia/work/project/elixir-learning-agent]" level="project" />
   </component>
 </module>

@@ -6,8 +6,8 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 
 - **Goal** — Study one pinned source repository at a time and turn source-confirmed reusable behavior into durable, validated learning artifacts without mutating the source repository.
 - **Status** — Implementation: deterministic runtime foundation complete; autonomous-learning product and container end-to-end acceptance remain partial.
-- **Milestone** — The repository has implemented durable domain state, SQL persistence, scheduling/recovery, Codebase Memory MCP framing, source/tool policy, note-first records, artifact validation/activation, an adapter-first bounded agent loop, an OpenViking outbox seam, and a Plug operator API. Evidence: `docs/06-implementation-roadmap.md` milestone status sections; current verification is `113 passed` from `mix test`.
-- **Next Milestone** — Complete the remaining deployment and product surfaces: live OpenViking transport, provider families/model routing, exhaustive multi-pass closure, container readiness proof, and the planned LiveView control plane. Evidence: `docs/06-implementation-roadmap.md` milestones 10, 11, 12, 13, and 15.
+- **Milestone** — The repository has implemented durable domain state, SQL persistence, scheduling/recovery, Codebase Memory MCP framing, source/tool policy, note-first records, artifact validation/activation, an adapter-first bounded agent loop, an OpenViking outbox seam, an env-backed Plug operator API, and a browser model playground with a bounded OpenAI-compatible test path. Evidence: `docs/06-implementation-roadmap.md`; current verification is `129 passed` from `mix test`.
+- **Next Milestone** — Complete the remaining deployment and product surfaces: live OpenViking transport, provider families/model routing, exhaustive multi-pass closure, container readiness proof, and the planned LiveView control plane. The current browser surface is a model dogfood probe, not the final dashboard. Evidence: `docs/06-implementation-roadmap.md` milestones 10, 11, 12, 13, and 15.
 
 ## Success Criteria
 
@@ -31,7 +31,7 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 
 - **External actors:** An operator, CI, a bounded learning model, and optional IDE/MCP clients.
 - **External systems:** PostgreSQL; a model provider through `LearningAgent.Provider`; Codebase Memory through the runtime MCP client; OpenViking through the outbox client behavior; GitHub Actions/Qodana/JetBrains inspections for repository quality.
-- **Trust boundaries:** Bearer-token role checks protect `/v1/*`; health routes are intentionally public; repository source is treated as read-only untrusted data; model/MCP/provider payloads are untrusted; database constraints and filesystem mount modes are safety boundaries.
+- **Trust boundaries:** Bearer-token role checks protect non-local `/v1/*` routes; loopback-bound Compose local dogfood mode intentionally exposes only the model probe without app auth; health routes are public; repository source is treated as read-only untrusted data; model/MCP/provider payloads are untrusted; database constraints and filesystem mount modes are safety boundaries.
 - **Runtime and environment:** Elixir `1.20.x`, an OTP-compatible BEAM, PostgreSQL 16, Docker Compose, and a private GitHub repository with `main` as the default branch. Codebase Memory project `learning-agent` is ready with 1418 nodes and 2109 edges; `Dockerfile:31` is parse-partial and must be checked locally. Evidence: `mix.exs:4-43`, `docker-compose.yml:1-56`, `gh repo view` output, the Codebase Memory `index_status` response, and local probes (`Elixir 1.20.3`, OTP 29, Docker 29.7.2, Compose 5.5.0).
 
 ## Architecture Overview
@@ -44,7 +44,7 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
   - MCP/source/policy plane — Codebase Memory protocol, bounded source reads, registered tool firewall — `lib/learning_agent/mcp/`, `source_reader.ex`, `tool_registry.ex`, `tool_policy.ex`.
   - Learning/artifact plane — note validation/publication, capsule rendering, generations, journals, parity — `learning_note.ex`, `notes/`, `skills/`, `artifacts/`.
   - Provider/outbox plane — provider behavior and OpenAI-compatible adapter, publication intents, retry/drain — `provider.ex`, `providers/openai_compatible.ex`, `outbox.ex`, `outbox_context.ex`, `open_viking/`.
-  - Operator boundary — Plug JSON health and role-gated routes — `lib/learning_agent_web/router.ex:13-104`.
+  - Operator boundary — Plug browser/model surface, JSON health, and env-backed role-gated routes — `lib/learning_agent_web/router.ex`, `lib/learning_agent_web/frontend.ex`, `lib/learning_agent/model_gateway.ex`.
 - **Composition roots:** `LearningAgent.Application.start/2`, Mix release declaration in `mix.exs:16-31`, `bin/server`, and Compose services in `docker-compose.yml`.
 - **Dependency rules:** Web calls contexts; contexts own durable decisions; adapters implement behaviors; model/provider/MCP/OpenViking adapters do not decide closure; workers do not execute arbitrary SQL; no source-writing or generic-shell tool exists. Evidence: `DESIGN.md` sections 17-18 and the policy/adapter modules.
 - **Key data structures or schemas:** repository/pin, run/transition, lease, learning note, inventory/claim/evidence, artifact set, and outbox event records, with migrations under `priv/repo/migrations/`.
@@ -104,8 +104,8 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 
 - **Unit/integration seams:** ExUnit domain and context tests; Ecto tests against PostgreSQL; MCP protocol/client tests over a real TCP stub; source/policy traversal tests; note/artifact/outbox/router tests.
 - **Test locations:** `test/` and `test/support/`; test compilation includes `test/support` through `mix.exs:33-34`.
-- **Live boundary probes:** local PostgreSQL and socket MCP stubs are exercised; live external model/OpenViking transport and full Compose readiness are not part of the current local green gate.
-- **Coverage gaps:** no configured coverage threshold; full fault-injection sweep, LiveView/browser tests, additional provider adapters, and production external transport tests remain open. Evidence: `docs/05` and `docs/06`.
+- **Live boundary probes:** local PostgreSQL and socket MCP stubs are exercised; the provider is tested keylessly through an injected transport, while live external model/OpenViking transport and full Compose readiness remain outside the current local green gate.
+- **Coverage gaps:** no configured coverage threshold; full fault-injection sweep, LiveView/browser tests, additional provider adapters, and production external transport tests remain open. The static browser/model route is covered by Plug tests. Evidence: `docs/05` and `docs/06`.
 
 ## Observability
 
@@ -142,7 +142,7 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 | 2026-08-29 | PostgreSQL-first durable state | leases, constraints, and outbox need transactional SQL | SQLite appliance profile | `docs/09-decision-record.md`, `DESIGN.md` |
 | 2026-08-29 | MCP boundaries for Codebase Memory/OpenViking | preserves typed, replaceable external integrations | deployment-specific native/sidecar transport | `docs/09-decision-record.md`, `lib/learning_agent/mcp/`, `lib/learning_agent/open_viking/` |
 | 2026-08-29 | Adapter-first model plane | keeps provider-neutral loop and keyless tests | provider-specific loop, multi-agent delegation | `docs/09-decision-record.md`, `lib/learning_agent/provider.ex` |
-| 2026-08-29 | Plug JSON API before planned LiveView | current operator surface is small and testable | immediate frontend implementation | `lib/learning_agent_web/router.ex`, `docs/07-frontend-control-plane.md` |
+| 2026-08-29 | Static model playground before planned LiveView | dogfood the provider seam without adding a frontend dependency tree | full operations dashboard | `lib/learning_agent_web/frontend.ex`, `lib/learning_agent_web/router.ex`, `docs/07-frontend-control-plane.md` |
 
 ## Known Risks and Hotspots
 

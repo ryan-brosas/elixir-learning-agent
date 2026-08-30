@@ -905,7 +905,7 @@ defmodule LearningAgent.LearningPass do
         :ok
 
       true ->
-        case RepositoryContext.queue_pass(current.id) do
+        case safe_pass_requeue(current.id) do
           {:ok, next} ->
             Logger.info(
               "learning_pass_requeued repo=#{current.slug} pass=#{next.pass_number} remaining=#{length(remaining)}"
@@ -922,6 +922,21 @@ defmodule LearningAgent.LearningPass do
           {:error, reason} ->
             Logger.warning("learning_pass_requeue_skipped reason=#{inspect(reason)}")
         end
+    end
+  end
+
+  # A finishing pass raced another requeue on the same repo: the repository/pass
+  # unique index is the backstop, and losing the race must never fail the pass
+  # retroactively. Self-heal re-queues the repo anyway.
+  defp safe_pass_requeue(repo_id) do
+    try do
+      RepositoryContext.queue_pass(repo_id)
+    rescue
+      e in Postgrex.Error ->
+        msg = String.slice(Exception.message(e), 0, 160)
+
+        Logger.warning("learning_pass_requeue_race repo=#{repo_id} reason=#{msg}")
+        {:error, :pass_number_taken}
     end
   end
 end

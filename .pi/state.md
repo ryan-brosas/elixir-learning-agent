@@ -25,7 +25,7 @@
 | Compose syntax | `docker compose config --quiet` | pass | 2026-08-29 |
 | Format | `mix format --check-formatted` | pass | 2026-08-29 |
 | Strict compile | `mix compile --warnings-as-errors` | pass | 2026-08-29 |
-| Tests | `mix test` | pass; 113 passed | 2026-08-29 |
+| Tests | `mix test` | pass; 129 passed | 2026-08-29 |
 | Release | `MIX_ENV=prod mix release --overwrite` | pass; release assembled | 2026-08-29 |
 | Docker image | `docker build --pull --tag learning-agent:ci .` | pass; production image built | 2026-08-29 |
 | Compose runtime | `docker compose up --build -d` | not run locally; readiness probe remains pending | 2026-08-29 |
@@ -74,7 +74,7 @@
 ### Technical
 
 - `LearningAgent.Application` starts recovery after the supervisor tree is up; test config disables scheduler/renewer background loops.
-- The Plug API is implemented; the LiveView frontend remains a design milestone.
+- The Plug API and dependency-free browser model playground are implemented; local Compose model routes accept browser-local saved URL/key/model settings without bearer auth, while the LiveView operations frontend remains a design milestone.
 - Qodana excludes generated/vendor paths and local `.pi` state; exported inspection XML remains ignored.
 
 ### Product

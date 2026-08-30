@@ -812,6 +812,9 @@ defmodule LearningAgentWeb.Frontend do
           if ($("metric-workers")) $("metric-workers").textContent = `${activeCount(body.run_counts)} / ${slots}`;
         }
         async function saveRuntime() {
+          await saveEverything();
+        }
+        async function saveAll() {
           syncLanesFromDom();
           const lanes = lanesState.map((lane) => ({
             model: (lane.model || "").trim(),
@@ -833,38 +836,23 @@ defmodule LearningAgentWeb.Frontend do
               body: JSON.stringify(payload)
             });
             const parts = (body.lanes || []).map((lane) => `${lane.slots} on ${lane.model || "default"}`);
-            status($("settings-status"), `${body.worker_slots} slots live${parts.length ? ": " + parts.join(", ") : ""}.`, "ok");
+            const conn = (body.model_connection || {}).base_url || "not set";
+            const fresh = await api("/v1/settings");
+            const saved = `Saved: ${fresh.worker_slots} slots (${parts.join(", ")}) · conn ${conn}.`;
+            status($("settings-status"), saved, "ok");
+            status($("connection-status"), saved, "ok");
             lanesDirty = false;
-            await loadBoard();
-          } catch (error) {
-            status($("settings-status"), error.message, "error");
-          }
-        }
-        async function saveConnection() {
-          const serverUrl = $("server-base-url").value.trim();
-          if (!serverUrl) {
-            status($("connection-status"), "Enter a base URL first.", "error");
-            return;
-          }
-          try {
-            const body = await api("/v1/settings", {
-              method: "PUT",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({
-                model: {
-                  base_url: serverUrl,
-                  api_key: $("server-api-key").value.trim(),
-                  model: $("server-model").value.trim()
-                }
-              })
-            });
-            const conn = body.model_connection || {};
-            status($("connection-status"), `Saved. Workers will call ${conn.base_url}${conn.model ? " with " + conn.model : ""}.`, "ok");
             await refreshServerModels();
             await loadBoard();
           } catch (error) {
+            status($("settings-status"), error.message, "error");
             status($("connection-status"), error.message, "error");
           }
+        }
+        const saveEverything = saveAll;
+        async function saveConnection() {
+          // Either Save button persists lanes AND the server connection.
+          await saveEverything();
         }
         async function testConnection() {
           const serverUrl = $("server-base-url").value.trim();
