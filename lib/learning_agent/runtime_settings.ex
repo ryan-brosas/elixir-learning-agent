@@ -323,6 +323,9 @@ defmodule LearningAgent.RuntimeSettings do
         tmp = path <> ".tmp"
         File.write!(tmp, Jason.encode!(payload))
         File.rename!(tmp, path)
+
+        # The file carries the provider API key: owner-only permissions.
+        _ = File.chmod(path, 0o600)
         :ok
     end
   end

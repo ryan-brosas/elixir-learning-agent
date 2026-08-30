@@ -98,7 +98,21 @@ defmodule LearningAgent.ModelGateway do
       not effective.enabled -> not_configured(:disabled)
       not present?(effective.base_url) -> not_configured(:base_url)
       not valid_endpoint?(effective.base_url) -> error(:base_url_invalid)
+      credentials_over_plaintext?(effective) -> error(:base_url_invalid)
       true -> {:ok, effective}
+    end
+  end
+
+  # API keys never cross plaintext HTTP except to loopback model servers.
+  defp credentials_over_plaintext?(%{base_url: base_url, api_key: api_key}) do
+    present?(api_key) and is_binary(base_url) and String.starts_with?(base_url, "http://") and
+      not loopback_url?(base_url)
+  end
+
+  defp loopback_url?(base_url) do
+    case URI.parse(base_url) do
+      %URI{host: host} when is_binary(host) -> host in ["127.0.0.1", "localhost", "::1", "[::1]"]
+      _ -> false
     end
   end
 
@@ -126,6 +140,7 @@ defmodule LearningAgent.ModelGateway do
       not effective.enabled -> not_configured(:disabled)
       not present?(effective.base_url) -> not_configured(:base_url)
       not valid_endpoint?(effective.base_url) -> error(:base_url_invalid)
+      credentials_over_plaintext?(effective) -> error(:base_url_invalid)
       not present?(effective.model) -> not_configured(:model)
       true -> {:ok, effective}
     end
@@ -193,7 +208,19 @@ defmodule LearningAgent.ModelGateway do
   end
 
   defp validate_connection(_), do: error(:connection_invalid)
-  defp valid_endpoint?(value), do: is_binary(endpoint_label(value))
+  defp valid_endpoint?(value) when is_binary(value) do
+    case URI.parse(value) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) ->
+        not metadata_host?(host)
+
+      _ ->
+        false
+    end
+  end
+
+  defp metadata_host?("169.254.169.254"), do: true
+  defp metadata_host?("metadata.google.internal"), do: true
+  defp metadata_host?(_), do: false
   defp error(reason), do: {:error, %{class: :invalid_request, reason: reason}}
   defp not_configured(reason), do: {:error, %{class: :not_configured, reason: reason}}
 

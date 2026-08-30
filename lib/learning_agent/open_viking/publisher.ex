@@ -20,8 +20,10 @@ defmodule LearningAgent.OpenViking.Publisher do
 
   @doc "Process one claim batch. Returns {:ok, results}."
   def drain(client, limit \\ 10) do
+    {:ok, claimed} = OutboxContext.claim_pending(limit)
+
     results =
-      OutboxContext.claim_pending(limit)
+      claimed
       |> Task.async_stream(&dispatch(client, &1),
         max_concurrency: @concurrency,
         timeout: :infinity
@@ -32,20 +34,20 @@ defmodule LearningAgent.OpenViking.Publisher do
   end
 
   defp dispatch(client, %OutboxEvent{event_type: type, payload: payload} = event) do
-    case deliver(client, type, payload || %{}) do
+    case deliver(client, type, payload || %{}, event) do
       {:ok, remote_ref} -> OutboxContext.deliver(event, remote_ref)
       {:error, {:permanent, reason}} -> OutboxContext.fail(event, reason)
       {:error, reason} -> OutboxContext.retry(event, reason)
     end
   end
 
-  defp deliver(client, "add_learning_note", payload),
-    do: add_and_upload(client, payload)
+  defp deliver(client, "add_learning_note", payload, event),
+    do: add_and_upload(client, payload, event)
 
-  defp deliver(client, "add_capsule", payload),
-    do: add_and_upload(client, payload)
+  defp deliver(client, "add_capsule", payload, event),
+    do: add_and_upload(client, payload, event)
 
-  defp deliver(client, "verify_symbol", payload) do
+  defp deliver(client, "verify_symbol", payload, _event) do
     case client.find.(Map.get(payload, "query", ""), []) do
       {:ok, [_hit | _]} -> {:ok, :verified}
       {:ok, []} -> {:error, {:transient, :not_found}}
@@ -53,12 +55,16 @@ defmodule LearningAgent.OpenViking.Publisher do
     end
   end
 
-  defp deliver(_client, type, _payload), do: {:error, {:permanent, {:unsupported_event, type}}}
+  defp deliver(_client, type, _payload, _event),
+    do: {:error, {:permanent, {:unsupported_event, type}}}
 
-  defp add_and_upload(client, payload) when is_map(payload) do
+  defp add_and_upload(client, payload, event) when is_map(payload) do
     case Map.get(payload, "path") do
       path when is_binary(path) and path != "" ->
-        case client.add.(Map.get(payload, "destination", ""), kw(payload)) do
+        # The destination lives on the event column; payload copies are legacy.
+        destination = event.destination || Map.get(payload, "destination", "")
+
+        case client.add.(destination, kw(payload)) do
           {:ok, result} -> upload_bytes(result, path)
           other -> other
         end
@@ -68,7 +74,7 @@ defmodule LearningAgent.OpenViking.Publisher do
     end
   end
 
-  defp add_and_upload(_client, _payload), do: {:error, {:permanent, :payload_missing}}
+  defp add_and_upload(_client, _payload, _event), do: {:error, {:permanent, :payload_missing}}
 
   defp upload_bytes(result, path) do
     case upload_url(result) do

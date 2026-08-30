@@ -129,14 +129,14 @@ defmodule LearningAgent.OpenViking.RelayerTest do
 
     # A claim from a dead publisher older than the cutoff is stranded: only
     # reclaim_stale can return it to pending.
-    claimed = OutboxContext.claim_pending(1, "dead-publisher")
+    assert {:ok, claimed} = OutboxContext.claim_pending(1, "dead-publisher")
     assert hd(claimed).id == event.id
 
     assert 1 = OutboxContext.reclaim_stale(future)
     assert OutboxContext.backlog() == 1
 
     # Claims newer than the cutoff stay held.
-    _ = OutboxContext.claim_pending(1, "live-publisher")
+    assert {:ok, _} = OutboxContext.claim_pending(1, "live-publisher")
     assert 0 = OutboxContext.reclaim_stale(past)
     assert OutboxContext.backlog() == 0
     assert 1 = OutboxContext.reclaim_stale(future)

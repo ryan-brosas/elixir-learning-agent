@@ -221,9 +221,6 @@ defmodule LearningAgentWeb.Router do
       case RunContext.request_cancel(id) do
         {:ok, run} ->
           send_json(conn, 200, %{run: id, state: run.state, cancelled: run.cancel_requested})
-
-        {:error, _} ->
-          send_json(conn, 404, %{error: :not_found})
       end
     end)
   end
@@ -498,7 +495,17 @@ defmodule LearningAgentWeb.Router do
   end
 
   defp with_model_access(conn, role, fun) do
-    if local_dogfood?(), do: fun.(conn), else: with_authorize(conn, role, fun)
+    # Local dogfood stays unauthenticated for loopback peers only: the server
+    # binds every interface, so LAN callers still need operator tokens.
+    if local_dogfood?() and loopback?(conn), do: fun.(conn), else: with_authorize(conn, role, fun)
+  end
+
+  defp loopback?(conn) do
+    case Plug.Conn.get_peer_data(conn).address do
+      {127, 0, 0, 1} -> true
+      {0, 0, 0, 0, 0, 0, 0, 1} -> true
+      _ -> false
+    end
   end
 
   defp local_dogfood? do

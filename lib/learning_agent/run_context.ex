@@ -195,9 +195,23 @@ defmodule LearningAgent.RunContext do
     if run.cancel_requested do
       {:ok, run}
     else
-      run
-      |> Ecto.Changeset.change(cancel_requested: true, cancel_requested_at: DateTime.utc_now())
-      |> Repo.update()
+      run =
+        run
+        |> Ecto.Changeset.change(cancel_requested: true, cancel_requested_at: DateTime.utc_now())
+        |> Repo.update!()
+
+      # Queued work never started, so no worker will observe the intent: the
+      # durable cancel completes the run now instead of stranding it queued.
+      if run.state == "queued" do
+        case unfenced_transition(run.id, "queued", "cancelled", %{
+               finished_at: DateTime.utc_now()
+             }) do
+          {:ok, cancelled} -> {:ok, cancelled}
+          _ -> {:ok, run}
+        end
+      else
+        {:ok, run}
+      end
     end
   end
 
@@ -263,15 +277,30 @@ defmodule LearningAgent.RunContext do
     process_orphans =
       from(r in Run, where: r.state in ^states and r.updated_at < ^cutoff)
       |> Repo.all()
-      |> Enum.filter(fn run -> not worker_alive?(run.id) end)
+      |> Enum.filter(fn run -> not worker_alive?(run) end)
 
     Enum.uniq_by(lease_orphans ++ process_orphans, & &1.id)
   end
 
-  defp worker_alive?(run_id) do
-    case Registry.lookup(LearningAgent.Registry, run_id) do
-      [{pid, _}] -> Process.alive?(pid)
-      _ -> false
+  defp lease_holder_node(repository_id) do
+    from(l in LearningAgent.Lease,
+      where: l.repository_id == ^repository_id,
+      order_by: [desc: l.renewed_at],
+      limit: 1,
+      select: l.holder_id
+    )
+    |> Repo.one()
+  end
+
+  defp worker_alive?(run) do
+    case Registry.lookup(LearningAgent.Registry, run.id) do
+      [{pid, _}] ->
+        Process.alive?(pid)
+
+      _ ->
+        # The worker may live on another node: only its own scheduler may
+        # reclaim it, so a foreign holder counts as alive here.
+        lease_holder_node(run.repository_id) != Atom.to_string(node())
     end
   end
 end

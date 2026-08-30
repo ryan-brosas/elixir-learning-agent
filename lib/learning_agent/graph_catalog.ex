@@ -189,7 +189,6 @@ defmodule LearningAgent.GraphCatalog do
             run ->
               case RunContext.request_cancel(run.id) do
                 {:ok, updated} -> [OperatorBoard.surface_run(updated)]
-                _ -> [OperatorBoard.surface_run(run)]
               end
           end
 

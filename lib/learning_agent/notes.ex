@@ -54,6 +54,11 @@ defmodule LearningAgent.Notes do
       nil ->
         {:error, :not_found}
 
+      # A published note is committed evidence: recovery reuses it verbatim
+      # instead of demoting it to a draft.
+      %LearningNote{status: "published"} = note ->
+        {:ok, note}
+
       note ->
         note
         |> LearningNote.changeset(attrs)

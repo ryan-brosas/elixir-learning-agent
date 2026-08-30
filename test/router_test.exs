@@ -177,7 +177,7 @@ defmodule LearningAgentWeb.RouterTest do
   end
 
   test "model list requires operator authorization in protected mode" do
-    assert call_json("POST", "/v1/models/list", nil, %{"base_url" => "http://model.test/v1"}).status ==
+    assert call_json("POST", "/v1/models/list", nil, %{"base_url" => "https://model.test/v1"}).status ==
              401
   end
 
@@ -194,14 +194,14 @@ defmodule LearningAgentWeb.RouterTest do
         fn ->
           response =
             call_json("POST", "/v1/models/list", nil, %{
-              "base_url" => "http://model.test/v1",
+              "base_url" => "https://model.test/v1",
               "api_key" => "browser-only-key"
             })
 
           assert response.status == 200
 
           assert Jason.decode!(response.resp_body) == %{
-                   "endpoint" => "http://model.test/v1",
+                   "endpoint" => "https://model.test/v1",
                    "models" => ["gpt-4o-mini", "gpt-4.1"]
                  }
         end
@@ -233,7 +233,7 @@ defmodule LearningAgentWeb.RouterTest do
         call_json("POST", "/v1/models/test", "op-token", %{
           "prompt" => "hello",
           "model" => "fixture-model",
-          "base_url" => "http://model.test/v1",
+          "base_url" => "https://model.test/v1",
           "api_key" => "browser-only-key"
         })
 
@@ -272,7 +272,7 @@ defmodule LearningAgentWeb.RouterTest do
             call_json("POST", "/v1/models/test", nil, %{
               "prompt" => "hello",
               "model" => "fixture-model",
-              "base_url" => "http://model.test/v1",
+              "base_url" => "https://model.test/v1",
               "api_key" => "browser-only-key"
             })
 

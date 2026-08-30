@@ -23,26 +23,39 @@ defmodule LearningAgent.OutboxContext do
     )
   end
 
-  @doc "Claim eligible pending events (oldest first), up to :limit."
+  @doc """
+  Claim eligible pending events (oldest first), up to :limit.
+
+  The claim is one transaction with FOR UPDATE SKIP LOCKED, so concurrent
+  relayers cannot claim the same rows and duplicate publications.
+  Returns {:ok, claimed_events}.
+  """
   def claim_pending(limit \\ 10, holder \\ "publisher-1") do
     now = DateTime.utc_now()
 
-    pending =
-      from(e in OutboxEvent, where: e.state == "pending", order_by: e.inserted_at, limit: ^limit)
-      |> Repo.all()
-
-    Enum.map(pending, fn e ->
-      {:ok, _} =
-        e
-        |> Ecto.Changeset.change(
-          state: "claimed",
-          held_by: holder,
-          claimed_at: now,
-          attempt_count: e.attempt_count + 1
+    Repo.transaction(fn ->
+      pending =
+        from(e in OutboxEvent,
+          where: e.state == "pending",
+          order_by: e.inserted_at,
+          limit: ^limit,
+          lock: "FOR UPDATE SKIP LOCKED"
         )
-        |> Repo.update()
+        |> Repo.all()
 
-      Repo.get!(OutboxEvent, e.id)
+      Enum.map(pending, fn e ->
+        {:ok, claimed} =
+          e
+          |> Ecto.Changeset.change(
+            state: "claimed",
+            held_by: holder,
+            claimed_at: now,
+            attempt_count: e.attempt_count + 1
+          )
+          |> Repo.update()
+
+        claimed
+      end)
     end)
   end
 

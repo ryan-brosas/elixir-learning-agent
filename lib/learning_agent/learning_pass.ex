@@ -194,6 +194,15 @@ defmodule LearningAgent.LearningPass do
     if source_allowed?(root) and File.dir?(root) do
       components = component_keys(root)
       files = walk_source(root, root, [], @inventory_max_files) |> Enum.reverse() |> Enum.sort()
+
+      if length(files) >= @inventory_max_files do
+        require Logger
+
+        Logger.warning(
+          "source_inventory_truncated root=#{root} cap=#{@inventory_max_files} — coverage will not reach every file"
+        )
+      end
+
       Enum.uniq(components ++ files)
     else
       []
@@ -695,7 +704,18 @@ defmodule LearningAgent.LearningPass do
         :ok
 
       is_integer(max) and max > 0 and run.pass_number >= max ->
+        # The cap is a circuit breaker: settle the repo so self-heal stops
+        # requeueing it (an active repo without queued work would hot-loop).
+        _ = RepositoryContext.set_status(current.id, "complete")
+
         Logger.info("learning_pass_cap repo=#{current.slug} pass=#{run.pass_number}")
+
+        Activity.log(
+          :info,
+          "pass cap reached \`#{current.slug}\` — settled to complete until an operator re-learns",
+          %{repo: current.slug}
+        )
+
         :ok
 
       true ->
