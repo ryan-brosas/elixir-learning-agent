@@ -44,6 +44,7 @@ services:
       LA_OV_PORT: ${LA_OV_PORT:-1933}
     volumes:
       - state:/state
+      - "./data:/app/data"
       - "${SKILLS_VOLUME:-./.agents/skills}:/agents/skills"
       - "${SOURCE_VOLUME:-./sources}:/sources:ro"
     depends_on:
