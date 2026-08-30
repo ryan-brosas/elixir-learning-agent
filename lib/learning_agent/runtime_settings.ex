@@ -278,6 +278,23 @@ defmodule LearningAgent.RuntimeSettings do
   defp resolved_path(path) when is_binary(path), do: path
   defp resolved_path(_), do: nil
 
+  defp existing_connection(path) do
+    case File.read(path) do
+      {:ok, body} ->
+        case Jason.decode(body) do
+          {:ok, %{"model_connection" => %{"base_url" => base_url} = conn}}
+          when is_binary(base_url) ->
+            %{base_url: base_url, api_key: conn["api_key"] || "", model: conn["model"] || nil}
+
+          _ ->
+            nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
   defp read_file do
     case resolved_path(settings_path()) do
       nil ->
@@ -299,7 +316,9 @@ defmodule LearningAgent.RuntimeSettings do
         :ok
 
       path ->
-        conn = model_connection()
+        # A lanes-only save must never erase a previously saved connection:
+        # a null in-memory connection carries the on-disk value forward.
+        conn = model_connection() || existing_connection(path)
 
         payload = %{
           "worker_slots" => snapshot.worker_slots,
