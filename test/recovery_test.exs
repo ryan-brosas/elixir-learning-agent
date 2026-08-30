@@ -38,6 +38,20 @@ defmodule LearningAgent.RecoveryTest do
     assert is_nil(requeued.lease_epoch)
   end
 
+  test "recovery requeues an in-flight run whose lease was released" do
+    {_repo, run} = setup_run("recovery3")
+    lease = Repo.get!(Lease, run.repository_id)
+
+    released =
+      Ecto.Changeset.change(lease, released_at: DateTime.utc_now(), release_outcome: "failed")
+
+    {:ok, _} = Repo.update(released)
+
+    assert Recovery.run() == :ok
+    requeued = Repo.get!(Run, run.id)
+    assert requeued.state == "queued"
+  end
+
   test "recovery cancels an orphaned run that was cancelled before worker death" do
     {_repo, run} = setup_run("recovery2")
     {:ok, _} = RunContext.request_cancel(run.id)

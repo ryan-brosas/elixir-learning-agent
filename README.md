@@ -31,10 +31,14 @@ Validate the deployment configuration without starting services:
 docker compose config --quiet
 ```
 
-The default Compose stack builds the release image, starts PostgreSQL, runs migrations through `bin/server`, and exposes the operator API on port `4000`:
+The default Compose stack builds the release image, starts PostgreSQL, runs migrations through `bin/server`, and exposes the operator API and model playground on port `4000`. Local Compose model dogfooding is loopback-bound and uses only the URL/API key entered in the browser; `.env` model values are optional defaults and no bearer token is needed for the model page.
 
 ```bash
+cp .env.example .env
+# Optional: set LA_OPERATOR_TOKEN to protect the non-model operator routes.
+# The model URL, API key, and model can be entered in the browser instead.
 docker compose up --build -d
+xdg-open http://localhost:4000/
 curl http://localhost:4000/health/live
 curl http://localhost:4000/health/ready
 ```
@@ -55,6 +59,8 @@ The current implementation already provides the deterministic core:
 - Capsule-v2 rendering and loader/map/disk parity checks.
 - Recoverable artifact generations and an OpenViking publication outbox seam.
 - Role-gated JSON health and operator endpoints plus telemetry formatting.
+- A responsive browser model playground at `/` with non-secret model status and an operator-only completion probe.
+- A bounded OpenAI-compatible provider adapter with normalized responses and injectable test transport.
 
 The full product design remains ahead of the implementation: LiveView operations, additional provider adapters, exhaustive multi-pass closure, and production OpenViking transport wiring are explicit follow-on work rather than hidden claims.
 
@@ -115,14 +121,18 @@ The unauthenticated health endpoints are:
 - `GET /health/live` — process liveness.
 - `GET /health/ready` — database-aware readiness.
 
-The role-gated JSON API includes:
+The HTTP/API surface includes:
 
+- `GET /` — browser model playground; connection settings can be saved in browser local storage and are never stored by the server.
+- `GET /v1/models` — non-secret configured model status; viewer access, or unauthenticated in local dogfood mode.
+- `POST /v1/models/list` — discovers provider models from a browser-supplied URL/key; operator access, or unauthenticated in local dogfood mode.
+- `POST /v1/models/test` — one bounded, non-tool completion; operator access, or unauthenticated in local dogfood mode. Accepts optional per-request `base_url`, `api_key`, and `model` overrides.
 - `GET /v1/repositories` — viewer access.
 - `POST /v1/runs/:id/cancel` — operator access.
 - `POST /v1/runs/:id/resolve-blocker` — operator access.
 - `POST /v1/outbox/:id/retry` — administrator access.
 
-Bearer-token role configuration is environment-driven; never place tokens in source, fixtures, README files, or Qodana configuration.
+Bearer-token role configuration is environment-driven through `LA_VIEWER_TOKEN`, `LA_OPERATOR_TOKEN`, and `LA_ADMIN_TOKEN`. Model defaults use `LA_MODEL_BASE_URL`, `LA_MODEL`, `LA_MODEL_API_KEY`, and `LA_MODEL_TIMEOUT_MS`, but the playground also accepts URL/key overrides in memory for one request. Never place tokens in source, fixtures, README files, or Qodana configuration.
 
 ## Documentation
 
@@ -133,7 +143,7 @@ Bearer-token role configuration is environment-driven; never place tokens in sou
 - [`docs/04-security-deployment-and-observability.md`](docs/04-security-deployment-and-observability.md) — security and operations.
 - [`docs/05-testing-and-verification.md`](docs/05-testing-and-verification.md) — acceptance gates.
 - [`docs/06-implementation-roadmap.md`](docs/06-implementation-roadmap.md) — delivery status and next milestones.
-- [`docs/07-frontend-control-plane.md`](docs/07-frontend-control-plane.md) — planned LiveView control plane.
+- [`docs/07-frontend-control-plane.md`](docs/07-frontend-control-plane.md) — browser dogfood surface and planned LiveView control plane.
 - [`docs/08-model-routing-workers-and-scaling.md`](docs/08-model-routing-workers-and-scaling.md) — provider and capacity design.
 - [`.pi/project.md`](.pi/project.md) — deep verified project context for agents.
 - [`.pi/tech-stack.md`](.pi/tech-stack.md) — commands, versions, integrations, and constraints.

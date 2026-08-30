@@ -37,6 +37,23 @@ defmodule LearningAgent.RunContextTest do
     assert {:error, :still_held} = RunContext.claim(Repo.get!(Run, run.id))
   end
 
+  test "a later run can claim after the previous lease is released" do
+    run = run_fixture("rc2b")
+    {:ok, claimed, lease} = RunContext.claim(run)
+
+    assert {:ok, _} =
+             LearningAgent.LeaseContext.release(
+               lease,
+               lease.epoch,
+               RunContext.holder(),
+               "completed"
+             )
+
+    queued = claimed |> Ecto.Changeset.change(state: "queued") |> Repo.update!()
+    assert {:ok, _, next} = RunContext.claim(queued)
+    assert next.epoch == 2
+  end
+
   test "cancel-before-start: a cancelled queued run is never claimed" do
     run = run_fixture("rc3")
     {:ok, _} = RunContext.request_cancel(run.id)
@@ -56,6 +73,22 @@ defmodule LearningAgent.RunContextTest do
 
     assert {:error, :invalid_transition} =
              RunContext.transition(claimed.id, "claimed", "completed", 1)
+  end
+
+  test "retry_failed_io requeues permission failures" do
+    run = run_fixture("rc7")
+    {:ok, claimed, _} = RunContext.claim(run)
+    {:ok, _} = RunContext.transition(claimed.id, "claimed", "preflight", 1)
+    {:ok, drafting} = RunContext.transition(claimed.id, "preflight", "note_drafting", 1)
+
+    {:ok, _} =
+      RunContext.transition(drafting.id, "note_drafting", "failed", 1, %{
+        failure_class: "not_writable",
+        finished_at: DateTime.utc_now()
+      })
+
+    assert RunContext.retry_failed_io() >= 1
+    assert Repo.get!(Run, run.id).state == "queued"
   end
 
   test "request_cancel is idempotent (never flips true -> false)" do

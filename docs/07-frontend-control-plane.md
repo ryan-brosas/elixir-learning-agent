@@ -24,7 +24,20 @@ The Phoenix documentation demonstrates LiveView subscriptions, streams, scoped c
 
 The Phoenix release documentation demonstrates `mix phx.gen.release`, `mix release`, runtime configuration, a non-root Docker runtime, and the `bin/server` release entrypoint.
 
-This design uses those patterns without pinning an implementation version before the Mix project is created.
+The current checkout keeps the first browser slice dependency-free; the planned LiveView layer will reuse these release and PubSub patterns.
+
+## 2.5 Current shipped slice
+
+The first dogfood slice is intentionally smaller than the final LiveView control plane:
+
+- `GET /` serves a responsive, dependency-free browser playground.
+- `GET /v1/models` returns only non-secret adapter/model status; local Compose dogfood mode permits this read without an application bearer token.
+- `POST /v1/models/list` discovers model IDs from the browser-supplied URL/API key; local Compose dogfood mode permits the lookup without a bearer token.
+- `POST /v1/models/test` accepts a bounded prompt plus optional URL, API-key, and model overrides; local Compose dogfood mode permits the model probe without a bearer token.
+- The route calls the same `LearningAgent.ModelGateway` and `LearningAgent.Providers.OpenAICompatible` seams that a future LiveView will use.
+- The browser can save the URL, API key, and selected model in local storage; the API forwards the key to the configured provider for each request and never stores or returns it. Protected deployments retain bearer auth for these routes.
+
+This is a usable local model probe, not a claim that the LiveView dashboard, multi-provider routing, or autonomous learning UI is complete. Use HTTPS and treat browser-supplied keys as exposed to the current browser session.
 
 ## 3. Frontend goals
 

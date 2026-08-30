@@ -13,6 +13,12 @@
 # Temporary files, for example, from tests.
 /tmp/
 
+# Writable skills fallback when .agents/skills is not writable.
+/skills-data/
+
+# Operator-saved worker/model split.
+/data/
+
 # If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump
 
@@ -29,3 +35,11 @@ learning_agent-*.tar
 
 # Local IDE inspection exports.
 /inspections/
+
+# Local model/provider credentials.
+/.env
+/.env.*
+!.env.example
+
+# IDE-generated dependency descriptors.
+/.idea/libraries/

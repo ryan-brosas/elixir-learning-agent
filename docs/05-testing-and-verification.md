@@ -711,6 +711,13 @@ Metrics endpoint policy is explicit.
 
 Health endpoints return expected states.
 
+### Current browser/model dogfood gates
+
+- `/` renders the browser playground with restrictive response headers.
+- `/v1/models` denies unauthenticated access in protected mode, permits local dogfood mode, and never returns the configured API key.
+- `/v1/models/test` requires operator authorization in protected mode, allows local dogfood mode, allowlists ephemeral URL/key/model fields, enforces bounded input, and returns normalized provider output without returning the API key.
+- Provider tests run keyless through an injected transport and cover malformed responses.
+
 ## 30. End-to-end fixture repository
 
 Create a small immutable fixture repository in test assets.

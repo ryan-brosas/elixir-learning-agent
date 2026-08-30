@@ -15,10 +15,17 @@ defmodule LearningAgent.MCP.Client do
     host = Keyword.fetch!(opts, :host)
     port = Keyword.fetch!(opts, :port)
 
+    start_opts =
+      case Keyword.fetch(opts, :name) do
+        {:ok, nil} -> []
+        {:ok, name} -> [name: name]
+        :error -> [name: __MODULE__]
+      end
+
     GenServer.start_link(
       __MODULE__,
       %{host: host, port: port, socket: nil, next_id: 1, pending: %{}},
-      name: Keyword.get(opts, :name, __MODULE__)
+      start_opts
     )
   end
 

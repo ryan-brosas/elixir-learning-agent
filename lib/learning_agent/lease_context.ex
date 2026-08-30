@@ -4,17 +4,23 @@ defmodule LearningAgent.LeaseContext do
 
   leases.repository_id is the primary key, so a hold is exclusive per repository.
   Claim is an upsert that increments epoch (fencing) when the previous lease is
-  expired; every protected mutation elsewhere must gate on the current epoch so a
-  stale worker updates zero rows.
+  expired or released; every protected mutation elsewhere must gate on the current
+  epoch so a stale worker updates zero rows.
   """
   import Ecto.Changeset
   alias LearningAgent.{Repo, Lease}
 
-  @lease_ttl :timer.minutes(5)
+  @lease_ttl_ms :timer.minutes(5)
+
+  def ttl_ms, do: @lease_ttl_ms
+
+  def expires_at(now \\ DateTime.utc_now()) do
+    DateTime.add(now, @lease_ttl_ms, :millisecond)
+  end
 
   def claim(repository_id, run_id, holder_id) do
     now = DateTime.utc_now()
-    expires = DateTime.add(now, @lease_ttl)
+    expires = expires_at(now)
 
     case Repo.get(Lease, repository_id) do
       nil ->
@@ -30,7 +36,7 @@ defmodule LearningAgent.LeaseContext do
         })
 
       lease ->
-        if expired?(lease) do
+        if reclaimable?(lease, now) do
           lease
           |> cast(
             %{
@@ -40,9 +46,19 @@ defmodule LearningAgent.LeaseContext do
               claimed_at: now,
               renewed_at: now,
               expires_at: expires,
-              released_at: nil
+              released_at: nil,
+              release_outcome: nil
             },
-            [:run_id, :holder_id, :epoch, :claimed_at, :renewed_at, :expires_at, :released_at]
+            [
+              :run_id,
+              :holder_id,
+              :epoch,
+              :claimed_at,
+              :renewed_at,
+              :expires_at,
+              :released_at,
+              :release_outcome
+            ]
           )
           |> validate_required([:run_id, :holder_id])
           |> Repo.update()
@@ -54,10 +70,7 @@ defmodule LearningAgent.LeaseContext do
 
   def renew(lease, epoch, holder_id) when lease.epoch == epoch and lease.holder_id == holder_id do
     lease
-    |> change(
-      renewed_at: DateTime.utc_now(),
-      expires_at: DateTime.add(DateTime.utc_now(), @lease_ttl)
-    )
+    |> change(renewed_at: DateTime.utc_now(), expires_at: expires_at())
     |> Repo.update()
   end
 
@@ -80,20 +93,14 @@ defmodule LearningAgent.LeaseContext do
         {:error, :no_lease}
 
       lease ->
-        if lease.epoch == epoch and lease.holder_id == holder_id do
-          lease
-          |> change(released_at: DateTime.utc_now(), release_outcome: outcome)
-          |> Repo.update()
-        else
-          {:error, :stale_epoch}
-        end
+        release(lease, epoch, holder_id, outcome)
     end
   end
 
   @doc "Fetch the current live lease for a repository."
   def current(repository_id), do: Repo.get(Lease, repository_id)
 
-  defp expired?(lease) do
-    DateTime.compare(lease.expires_at, DateTime.utc_now()) == :lt
+  def reclaimable?(%Lease{} = lease, now \\ DateTime.utc_now()) do
+    not is_nil(lease.released_at) or DateTime.compare(lease.expires_at, now) == :lt
   end
 end

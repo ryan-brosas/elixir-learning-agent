@@ -5,20 +5,30 @@ defmodule LearningAgent.Operator do
   """
 
   @roles [:viewer, :operator, :administrator]
-  @tokens %{
-    "view-token" => {:viewer, "ops"},
-    "op-token" => {:operator, "ops"},
-    "admin-token" => {:administrator, "ops"}
-  }
-
   def roles, do: @roles
 
   @doc "Resolve a bearer token to {role, subject} | :invalid."
   def authenticate(conn) do
     case Plug.Conn.get_req_header(conn, "authorization") do
-      ["Bearer " <> token] -> Map.get(@tokens, token, :invalid)
+      ["Bearer " <> token] -> Map.get(tokens(), token, :invalid)
       _ -> :invalid
     end
+  end
+
+  defp tokens do
+    configured = Application.get_env(:learning_agent, :operator_tokens, %{})
+
+    [
+      {"LA_VIEWER_TOKEN", :viewer},
+      {"LA_OPERATOR_TOKEN", :operator},
+      {"LA_ADMIN_TOKEN", :administrator}
+    ]
+    |> Enum.reduce(configured, fn {env_name, role}, acc ->
+      case System.get_env(env_name) do
+        token when is_binary(token) and token != "" -> Map.put(acc, token, {role, "ops"})
+        _ -> acc
+      end
+    end)
   end
 
   @doc "True when actual role meets the required role."

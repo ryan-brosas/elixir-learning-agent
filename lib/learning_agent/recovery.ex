@@ -11,7 +11,6 @@ defmodule LearningAgent.Recovery do
   def run do
     case RunContext.orphaned() do
       [] ->
-        Logger.info("recovery_complete orphans=0")
         :ok
 
       runs ->
