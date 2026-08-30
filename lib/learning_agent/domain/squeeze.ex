@@ -47,7 +47,12 @@ defmodule LearningAgent.Domain.Squeeze do
     end
   end
 
-  defp section(content, name) do
+  @doc """
+  Extract one markdown section body from a note. Public so the skill
+  synthesizer can distill the learned sections into the operator-facing
+  SKILL.md without re-parsing note markdown ad hoc.
+  """
+  def section(content, name) do
     pattern = ~r/^[ \t]*# #{Regex.escape(name)}\n(.*?)(?:\n[ \t]*# |\z)/ms
 
     case Regex.run(pattern, content || "") do

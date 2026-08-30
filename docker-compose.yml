@@ -28,7 +28,7 @@ services:
       LA_MODEL_BASE_URL: ${LA_MODEL_BASE_URL:-}
       LA_MODEL: ${LA_MODEL:-}
       LA_MODEL_API_KEY: ${LA_MODEL_API_KEY:-}
-      LA_MODEL_TIMEOUT_MS: ${LA_MODEL_TIMEOUT_MS:-15000}
+      LA_MODEL_TIMEOUT_MS: ${LA_MODEL_TIMEOUT_MS:-120000}
       LA_MODEL_RETRY_LIMIT: ${LA_MODEL_RETRY_LIMIT:-100}
       LA_VIEWER_TOKEN: ${LA_VIEWER_TOKEN:-}
       LA_OPERATOR_TOKEN: ${LA_OPERATOR_TOKEN:-}
@@ -46,7 +46,9 @@ services:
       - state:/state
       - "./data:/app/data"
       - "${SKILLS_VOLUME:-./.agents/skills}:/agents/skills"
+      - "./skills-data:/mnt/ssd/work/project/elixir-learning-agent/skills-data:ro"
       - "${SOURCE_VOLUME:-./sources}:/sources:ro"
+      - "/mnt/hdd/utopia/inspo:/mnt/hdd/utopia/inspo:ro"
     depends_on:
       postgres:
         condition: service_healthy

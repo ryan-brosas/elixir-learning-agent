@@ -47,7 +47,7 @@ defmodule LearningAgent.ModelRetry do
       {:error, reason} = error ->
         if retryable?(reason) and attempt < max_attempts do
           log_retry(attempt, max_attempts, reason)
-          sleep.(attempt)
+          try_sleep(attempt, reason)
           run(fun, attempt + 1, max_attempts, sleep)
         else
           error
@@ -55,6 +55,21 @@ defmodule LearningAgent.ModelRetry do
 
       other ->
         other
+    end
+  end
+
+  # Provider quota (429) needs patience while the pool frees up; timeouts
+  # and connection failures retry fast through the injected sleep.
+  defp try_sleep(attempt, %{class: :rate_limited}), do: rate_limit_backoff(attempt)
+  defp try_sleep(attempt, _reason), do: backoff(attempt)
+
+  defp rate_limit_backoff(attempt) when is_integer(attempt) and attempt >= 1 do
+    if Application.get_env(:learning_agent, :model_retry_sleep, true) do
+      cap = Application.get_env(:learning_agent, :model_rate_limit_backoff_ms, 60_000)
+      delay = min(cap, 2_000 * Integer.pow(2, min(attempt - 1, 6)))
+      Process.sleep(delay)
+    else
+      :ok
     end
   end
 

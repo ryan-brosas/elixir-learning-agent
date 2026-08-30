@@ -28,6 +28,7 @@ defmodule LearningAgent.LearningPass do
 
   @skip_dirs MapSet.new(["node_modules", "deps", "_build", "dist", "target", "cover", "vendor"])
   @source_exts MapSet.new([".ex", ".exs", ".md", ".py", ".ts", ".js", ".rs", ".go", ".json"])
+  @grounding_max_bytes 2 * 1024
   # A 200-file walk cap let a 29k-file repo "drain" after 200 passes; breadth
   # still needs a bound, but 10x deeper before a repo can claim coverage.
   @inventory_max_files 2_000
@@ -58,7 +59,8 @@ defmodule LearningAgent.LearningPass do
          {:ok, run} <- step(run, "claimed", "preflight"),
          {:ok, observation} <- observe(repo),
          {:ok, run} <- step(run, "preflight", "note_drafting"),
-         {:ok, note} <- Notes.create(run.id, repo.id, note_body(repo, run, observation, model)),
+         {:ok, note} <-
+           Notes.create(run.id, repo.id, effective_body(repo, run, observation, model)),
          {:ok, published} <- Notes.publish(note, notes_root()),
          {:ok, run} <- step(run, "note_drafting", "note_published"),
          {:ok, run} <- step(run, "note_published", "exploring"),
@@ -150,7 +152,7 @@ defmodule LearningAgent.LearningPass do
       {:ok, value} ->
         value
         |> grounding_text()
-        |> String.slice(0, 4_000)
+        |> String.slice(0, @grounding_max_bytes)
 
       _ ->
         nil
@@ -291,6 +293,12 @@ defmodule LearningAgent.LearningPass do
 
   @learn_max_bytes 24 * 1024
   @learn_read_lines 400
+  @learn_max_tokens 2_048
+  # top-tools-ai rejects prompts >= ~32KB with 429 (quota by payload size);
+  # clamp the assembled prompt so every pass fits, and the retry ladder only
+  # ever rides genuine transient 429s instead of structural ones.
+  @learn_max_prompt_bytes 24_000
+  @learn_prior_bytes 8 * 1024
   # Component passes study the component's own files, biggest first, instead of
   # failing on a directory read and faking coverage with a template note.
   @component_study_files 8
@@ -351,8 +359,31 @@ defmodule LearningAgent.LearningPass do
     """
   end
 
+  defp effective_body(repo, run, observation, model) do
+    if observation.files == [] or observation.selected == repo.slug do
+      # Nothing left to study (drained relearn): carry the prior published note
+      # forward instead of clobbering real knowledge with an empty template.
+      case prior_body(repo) do
+        nil -> note_body(repo, run, observation, model)
+        body -> body
+      end
+    else
+      note_body(repo, run, observation, model)
+    end
+  end
+
+  defp prior_body(repo) do
+    from(n in LearningNote,
+      where: n.repository_id == ^repo.id and n.status == "published",
+      order_by: [desc: n.inserted_at],
+      limit: 1,
+      select: n.content
+    )
+    |> Repo.one()
+  end
+
   @doc """
-  One model turn that grows the durable note. Reads the selected source through
+  One model turn that grows the whole note. Reads the selected source through
   SourceReader (bounded), feeds the previous note as memory, and returns the
   updated note. Any failure falls back to the deterministic template so the
   pass keeps its progress guarantees.
@@ -367,24 +398,31 @@ defmodule LearningAgent.LearningPass do
       complete =
         Application.get_env(:learning_agent, :note_complete, &OpenAICompatible.complete/1)
 
-      # Per-file cap: the scheduler requeues failed passes with its own cooldown,
-      # so a dead endpoint recovers continuously without 100 hot retries per file.
+      # Per-file cap: rate-limited providers need minutes of patience while
+      # the quota window frees; non-429 failures still fall back fast.
       retry = [
-        max_attempts: min(ModelRetry.limit(), 5),
+        max_attempts: min(ModelRetry.limit(), 30),
         sleep: &ModelRetry.backoff/1
       ]
+
+      prompt =
+        learn_prompt(repo, run, observation, file) |> String.slice(0, @learn_max_prompt_bytes)
 
       payload = %{
         model: model_id,
         messages: [
           %{
             role: :user,
-            content: [%{type: :text, text: learn_prompt(repo, run, observation, file)}]
+            content: [%{type: :text, text: prompt}]
           }
         ],
         base_url: conn.base_url,
         api_key: conn.api_key,
-        timeout_ms: conn.timeout_ms || 15_000
+        timeout_ms: conn.timeout_ms || 15_000,
+        # Bound the note generation: an open-ended reasoning model can spin for
+        # many minutes, blowing any client timeout and falling back to the
+        # template. A capped completion finishes well inside the window.
+        max_tokens: @learn_max_tokens
       }
 
       case ModelRetry.call(fn -> complete.(payload) end, retry) do
@@ -417,7 +455,12 @@ defmodule LearningAgent.LearningPass do
           :fallback
       end
     else
-      _ -> :fallback
+      reason ->
+        Logger.warning(
+          "learning_learn_skipped repo=#{repo.slug} selected=#{inspect(observation.selected)} reason=#{inspect(reason)}"
+        )
+
+        :fallback
     end
   end
 
@@ -477,7 +520,7 @@ defmodule LearningAgent.LearningPass do
     prior =
       case observation.prior && observation.prior.note do
         nil -> "(first pass - no prior note; start the memory)"
-        note -> String.slice(note, 0, @learn_max_bytes)
+        note -> String.slice(note, 0, @learn_prior_bytes)
       end
 
     """
@@ -554,12 +597,12 @@ defmodule LearningAgent.LearningPass do
     skill = """
     ---
     name: #{repo.slug}
-    description: Learned from #{repo.display_name} pass #{run.pass_number}.
+    description: #{skill_description(note, repo)}
     ---
 
-    # #{repo.display_name}
+    # #{repo.display_name} - what this codebase is and how it works
 
-    Note-first learning output. Loader and capsule map stay in parity with on-disk refs.
+    #{skill_body(note)}
 
     ## Loader
     #{Enum.join(Leaf.loader_lines([ref]), "\n")}
@@ -573,6 +616,53 @@ defmodule LearningAgent.LearningPass do
        "SKILL.md" => skill,
        ref => Synthesizer.render_capsule(capsule)
      }}
+  end
+
+  # The skill must carry the learned knowledge itself: the accumulated
+  # architecture (component map, W's) and the open porting questions - not a
+  # file index pointing at the note.
+  defp skill_body(note) do
+    architecture = architecture_body(note.content)
+    questions = section_body(note.content, "porter-questions")
+
+    if questions == "" do
+      architecture
+    else
+      architecture <> "\n\n## Open questions for a port\n\n" <> questions
+    end
+    |> String.trim_trailing()
+  end
+
+  defp architecture_body(content) do
+    case LearningAgent.Domain.Squeeze.section(content, "architecture") do
+      body when is_binary(body) -> String.trim(body)
+      _ -> "No accumulated architecture yet; see the pass references."
+    end
+  end
+
+  defp section_body(content, name) do
+    case LearningAgent.Domain.Squeeze.section(content, name) do
+      body when is_binary(body) -> String.trim(body)
+      _ -> ""
+    end
+  end
+
+  defp skill_description(note, repo) do
+    case LearningAgent.Domain.Squeeze.section(note.content, "architecture") do
+      body when is_binary(body) ->
+        body
+        |> String.split("\n", trim: true)
+        |> Enum.reject(&String.contains?(&1, "Repository `"))
+        |> List.first("")
+        |> String.slice(0, 160)
+        |> case do
+          "" -> "Learning notes for " <> repo.display_name
+          line -> String.trim(line)
+        end
+
+      _ ->
+        "Learning notes for " <> repo.display_name
+    end
   end
 
   defp step(run, from, to, attrs \\ %{}) do
