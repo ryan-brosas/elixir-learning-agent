@@ -52,8 +52,11 @@ defmodule LearningAgent.Scheduler do
   @doc "Manually nudge admission (used in tests)."
   def tick, do: GenServer.cast(__MODULE__, :tick)
 
+  # Casts (operator nudges, tests) admit synchronously: no caller is blocked,
+  # and the admission is durable by the time the cast is processed. The 2s
+  # timer path is the one that must stay off the loop GenServer.
   @impl true
-  def handle_cast(:tick, state), do: {:noreply, maybe_admit(state)}
+  def handle_cast(:tick, state), do: {:noreply, admit(state)}
 
   @impl true
   def handle_call({:set_concurrency, slots}, _from, state) do
