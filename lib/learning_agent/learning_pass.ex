@@ -317,30 +317,49 @@ defmodule LearningAgent.LearningPass do
         |> prepend_architecture_intro(header)
 
       :fallback ->
-        template_note(repo, run, observation)
+        template_note(repo, run, observation, prior_body(repo))
     end
   end
 
-  defp template_note(repo, run, observation) do
+  # A model failure must never erase prior knowledge: the fallback note
+  # carries the previous note forward (memory accumulates across passes) and
+  # only re-marks the current file as covered. The partial/uncited list is
+  # bounded so it cannot crowd the next session's prompt with file names.
+  defp template_note(repo, run, observation, prior) do
     covered =
-      case observation.selected do
-        nil -> "- (no remaining unread files)"
-        selected -> "- `" <> selected <> "`"
+      if observation.selected == nil do
+        "- (no remaining unread files)"
+      else
+        "- `" <> observation.selected <> "`"
       end
 
+    if is_binary(prior) and complete_sections?(prior) do
+      prior
+      |> ensure_covered(observation.selected)
+      |> prepend_fallback_header(repo, run, covered)
+    else
+      fresh_template(repo, run, observation, covered)
+    end
+  end
+
+  defp fresh_template(repo, run, observation, covered) do
     unread =
       observation.files
       |> List.wrap()
       |> Enum.reject(&(&1 == observation.selected))
+      |> Enum.take(50)
 
     partial =
       if unread == [] do
         "No unread source files remain; this repository is drained."
       else
-        Enum.map_join(unread, "\n", &("- `" <> &1 <> "`"))
+        Enum.map_join(unread, "
+", &("- `" <> &1 <> "`"))
       end
 
-    """
+    selected = observation.selected || repo.slug
+
+    yes = """
     # architecture
     Repository `#{repo.slug}` at `#{repo.source_locator}` (graph `#{repo.graph_project}`), pass #{run.pass_number}.
     #{observation.memory}#{model_line(nil)}
@@ -352,11 +371,41 @@ defmodule LearningAgent.LearningPass do
     #{partial}
 
     # porter-questions
-    What first reusable seam should a later pass encode from `#{observation.selected}`?
+    What is the first reusable seam to encode from `#{selected}`?
 
     # selected-subsystem
-    #{observation.selected}
+    #{selected}
     """
+
+    yes
+  end
+
+  defp complete_sections?(content) do
+    Enum.all?(
+      ["architecture", "porter-questions", "selected-subsystem", "covered", "partial/uncited"],
+      &String.contains?(String.downcase(content), &1)
+    )
+  end
+
+  defp prepend_fallback_header(text, repo, run, covered) do
+    header =
+      "
+
+> Fallback (no model output) pass #{run.pass_number} for `#{repo.slug}`: prior knowledge carried forward.
+
+" <>
+        "# covered
+#{covered}
+
+"
+
+    text
+    |> String.replace(
+      "# covered
+",
+      header,
+      global: false
+    )
   end
 
   defp effective_body(repo, run, observation, model) do
