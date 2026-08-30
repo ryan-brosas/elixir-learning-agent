@@ -49,10 +49,28 @@ defmodule LearningAgent.NotesTest do
     File.rm_rf!(work)
   end
 
-  test "a second note for the same run is rejected (one note per run)" do
+  test "publish returns not_writable instead of raising" do
+    work =
+      Path.join(
+        System.tmp_dir!(),
+        "ro_notes_" <> Integer.to_string(System.unique_integer([:positive]))
+      )
+
+    File.mkdir_p!(work)
+    File.chmod!(work, 0o500)
+    {_repo, run} = setup_run("n2b")
+    {:ok, note} = Notes.create(run.id, run.repository_id, note_body())
+    assert {:error, :not_writable} = Notes.publish(note, work)
+    File.chmod!(work, 0o700)
+    File.rm_rf!(work)
+  end
+
+  test "a second create for the same run reuses the existing note" do
     {repo, run} = setup_run("n3")
-    {:ok, _} = Notes.create(run.id, repo.id, note_body())
-    assert {:error, _} = Notes.create(run.id, repo.id, note_body())
+    {:ok, first} = Notes.create(run.id, repo.id, note_body())
+    {:ok, second} = Notes.create(run.id, repo.id, note_body())
+    assert second.id == first.id
+    assert second.status == "draft"
   end
 
   test "an invalid note (missing required section) is rejected before DB" do

@@ -23,26 +23,39 @@ defmodule LearningAgent.OutboxContext do
     )
   end
 
-  @doc "Claim eligible pending events (oldest first), up to :limit."
+  @doc """
+  Claim eligible pending events (oldest first), up to :limit.
+
+  The claim is one transaction with FOR UPDATE SKIP LOCKED, so concurrent
+  relayers cannot claim the same rows and duplicate publications.
+  Returns {:ok, claimed_events}.
+  """
   def claim_pending(limit \\ 10, holder \\ "publisher-1") do
     now = DateTime.utc_now()
 
-    pending =
-      from(e in OutboxEvent, where: e.state == "pending", order_by: e.inserted_at, limit: ^limit)
-      |> Repo.all()
-
-    Enum.map(pending, fn e ->
-      {:ok, _} =
-        e
-        |> Ecto.Changeset.change(
-          state: "claimed",
-          held_by: holder,
-          claimed_at: now,
-          attempt_count: e.attempt_count + 1
+    Repo.transaction(fn ->
+      pending =
+        from(e in OutboxEvent,
+          where: e.state == "pending",
+          order_by: e.inserted_at,
+          limit: ^limit,
+          lock: "FOR UPDATE SKIP LOCKED"
         )
-        |> Repo.update()
+        |> Repo.all()
 
-      Repo.get!(OutboxEvent, e.id)
+      Enum.map(pending, fn e ->
+        {:ok, claimed} =
+          e
+          |> Ecto.Changeset.change(
+            state: "claimed",
+            held_by: holder,
+            claimed_at: now,
+            attempt_count: e.attempt_count + 1
+          )
+          |> Repo.update()
+
+        claimed
+      end)
     end)
   end
 
@@ -67,6 +80,28 @@ defmodule LearningAgent.OutboxContext do
       payload: Map.put(event.payload || %{}, "last_error", inspect(reason))
     )
     |> Repo.update()
+  end
+
+  @doc """
+  Reset stale claims and overdue retry_wait events to pending. A publisher that
+  dies mid-drain strands claimed rows no live process will ever release, and
+  retry_wait has no scheduler of its own; without a reclaim ladder both states
+  strand events forever. Returns the number of reclaimed events.
+  """
+  def reclaim_stale(cutoff) do
+    {claimed, _} =
+      from(e in OutboxEvent,
+        where: e.state == "claimed" and e.claimed_at < ^cutoff
+      )
+      |> Repo.update_all(set: [state: "pending", held_by: nil, claimed_at: nil])
+
+    {waited, _} =
+      from(e in OutboxEvent,
+        where: e.state == "retry_wait" and e.updated_at < ^cutoff
+      )
+      |> Repo.update_all(set: [state: "pending", held_by: nil, claimed_at: nil])
+
+    claimed + waited
   end
 
   @doc "Operator retry: reset a failed/retry event to pending for a fresh claim."

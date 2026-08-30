@@ -56,6 +56,24 @@ defmodule LearningAgent.LeaseContextTest do
     assert reclaimed.holder_id == "holder-b"
   end
 
+  test "a released lease can be claimed again" do
+    {repo, run} = lease_setup("r6")
+    {:ok, lease} = LeaseContext.claim(repo.id, run.id, "holder-a")
+    {:ok, _} = LeaseContext.release(lease, lease.epoch, "holder-a", "completed")
+    assert {:ok, again} = LeaseContext.claim(repo.id, run.id, "holder-b")
+    assert again.epoch == 2
+    assert again.holder_id == "holder-b"
+    assert is_nil(again.released_at)
+  end
+
+  test "claim expiry is minutes, not days" do
+    {repo, run} = lease_setup("r7")
+    {:ok, lease} = LeaseContext.claim(repo.id, run.id, "holder-a")
+    diff = DateTime.diff(lease.expires_at, lease.claimed_at, :second)
+    assert diff > 60
+    assert diff <= 6 * 60
+  end
+
   test "release only succeeds for current epoch+holder and is idempotent" do
     {repo, run} = lease_setup("r5")
     {:ok, lease} = LeaseContext.claim(repo.id, run.id, "holder-a")

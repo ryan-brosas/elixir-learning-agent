@@ -59,13 +59,34 @@ defmodule LearningAgent.AgentLoopTest do
     assert {:error, :max_turns} = AgentLoop.run(opts(provider, max_turns: 4))
   end
 
-  test "provider timeout retries once then fails" do
+  test "transient model failures retry until a later attempt succeeds" do
     {_pid, provider} =
       scripted_provider([
         {:error, %{class: :timeout, detail: :t1}},
-        {:error, %{class: :timeout, detail: :t2}}
+        {:error, %{class: :rate_limited, detail: :t2}},
+        {:ok, %{tool_calls: [], text: "recovered"}}
       ])
 
-    assert {:error, :provider_timeout} = AgentLoop.run(opts(provider))
+    assert {:ok, %{stop: :finished, text: "recovered"}} =
+             AgentLoop.run(opts(provider, model_retries: 100, retry_sleep: fn _ -> :ok end))
+  end
+
+  test "transient model failures exhaust the retry limit" do
+    {_pid, provider} =
+      scripted_provider(List.duplicate({:error, %{class: :timeout, detail: :t}}, 100))
+
+    assert {:error, :provider_timeout} =
+             AgentLoop.run(opts(provider, model_retries: 100, retry_sleep: fn _ -> :ok end))
+  end
+
+  test "authentication failures do not retry" do
+    {_pid, provider} =
+      scripted_provider([
+        {:error, %{class: :authentication, detail: :auth}},
+        {:ok, %{tool_calls: [], text: "should-not-run"}}
+      ])
+
+    assert {:error, {:provider, :authentication}} =
+             AgentLoop.run(opts(provider, model_retries: 100, retry_sleep: fn _ -> :ok end))
   end
 end

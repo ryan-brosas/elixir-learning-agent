@@ -15,15 +15,54 @@ defmodule LearningAgent.Notes do
   @doc "Create a draft note in SQL. content is the raw markdown body."
   def create(run_id, repository_id, content) do
     with :ok <- Validator.validate(content) do
-      %LearningNote{}
-      |> LearningNote.changeset(%{
+      attrs = %{
         run_id: run_id,
         repository_id: repository_id,
         content: content,
         content_digest: digest(content),
-        status: "draft"
-      })
-      |> Repo.insert()
+        status: "draft",
+        file_path: nil,
+        file_digest: nil,
+        committed_at: nil
+      }
+
+      case %LearningNote{} |> LearningNote.changeset(attrs) |> Repo.insert() do
+        {:ok, note} ->
+          {:ok, note}
+
+        {:error, changeset} ->
+          if unique_run?(changeset) do
+            reuse(run_id, attrs)
+          else
+            {:error, changeset}
+          end
+      end
+    end
+  end
+
+  defp unique_run?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:run_id, {_, opts}} -> opts[:constraint] == :unique
+      _ -> false
+    end)
+  end
+
+  defp unique_run?(_), do: false
+
+  defp reuse(run_id, attrs) do
+    case Repo.get_by(LearningNote, run_id: run_id) do
+      nil ->
+        {:error, :not_found}
+
+      # A published note is committed evidence: recovery reuses it verbatim
+      # instead of demoting it to a draft.
+      %LearningNote{status: "published"} = note ->
+        {:ok, note}
+
+      note ->
+        note
+        |> LearningNote.changeset(attrs)
+        |> Repo.update()
     end
   end
 
@@ -33,23 +72,49 @@ defmodule LearningAgent.Notes do
   """
   def publish(note, work_root) do
     target = file_target(work_root, note)
-    File.mkdir_p!(Path.dirname(target))
     temp = target <> ".tmp"
-    File.write!(temp, note.content)
-    File.rename!(temp, target)
 
-    readback = File.read!(target)
-    file_digest = digest(readback)
-    status = if file_digest == note.content_digest, do: "published", else: "conflict"
+    with :ok <- mkdir(Path.dirname(target)),
+         :ok <- write(temp, note.content),
+         :ok <- rename(temp, target),
+         {:ok, readback} <- File.read(target) do
+      file_digest = digest(readback)
+      status = if file_digest == note.content_digest, do: "published", else: "conflict"
 
-    note
-    |> Ecto.Changeset.change(
-      status: status,
-      file_path: target,
-      file_digest: file_digest,
-      committed_at: DateTime.utc_now()
-    )
-    |> Repo.update()
+      note
+      |> Ecto.Changeset.change(
+        status: status,
+        file_path: target,
+        file_digest: file_digest,
+        committed_at: DateTime.utc_now()
+      )
+      |> Repo.update()
+    else
+      {:error, :eacces} -> {:error, :not_writable}
+      {:error, :eperm} -> {:error, :not_writable}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp mkdir(path) do
+    case File.mkdir_p(path) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp write(path, content) do
+    case File.write(path, content) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp rename(from, to) do
+    case File.rename(from, to) do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc "Public digest helper (stable SHA-256)."
@@ -93,7 +158,15 @@ defmodule LearningAgent.Notes do
   end
 
   defp file_target(work_root, note) do
-    sub = String.replace(note.run_id, "-", "")
+    sub =
+      note.run_id
+      |> stringify_id()
+      |> String.replace("-", "")
+
     Path.join([work_root, sub, "note-" <> sub <> ".md"])
   end
+
+  defp stringify_id(id) when is_binary(id) and byte_size(id) == 16, do: Ecto.UUID.load!(id)
+  defp stringify_id(id) when is_binary(id), do: id
+  defp stringify_id(id), do: to_string(id)
 end

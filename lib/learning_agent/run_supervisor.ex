@@ -13,7 +13,7 @@ defmodule LearningAgent.RunSupervisor do
   def init(_opts), do: DynamicSupervisor.init(strategy: :one_for_one)
 
   @doc "Start a worker for a claimed run; returns {:ok, pid} | {:error, reason}."
-  def start_worker(run) do
-    DynamicSupervisor.start_child(__MODULE__, {LearningAgent.RunWorker, run})
+  def start_worker(run, model \\ nil) do
+    DynamicSupervisor.start_child(__MODULE__, {LearningAgent.RunWorker, {run, model}})
   end
 end

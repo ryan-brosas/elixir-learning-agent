@@ -16,7 +16,7 @@ defmodule LearningAgent.MixProject do
   def application do
     [
       mod: {LearningAgent.Application, []},
-      extra_applications: [:logger]
+      extra_applications: [:logger, :inets, :ssl]
     ]
   end
 

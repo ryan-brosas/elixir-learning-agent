@@ -7,7 +7,7 @@ defmodule LearningAgent.RunContext do
   and never overwritten.
   """
   import Ecto.Query
-  alias LearningAgent.{Repo, Run, Lease}
+  alias LearningAgent.{Repo, Run, Lease, LeaseContext}
   alias LearningAgent.Domain.Run, as: RunDomain
 
   @queued "queued"
@@ -23,10 +23,11 @@ defmodule LearningAgent.RunContext do
     "publishing",
     "recording_result"
   ]
-  @lease_ttl :timer.minutes(5)
+  @orphan_grace_s 15
+  @failure_cooldown_ms :timer.seconds(60)
 
   @doc "Lease TTL used for claim (ms)."
-  def ttl, do: @lease_ttl
+  def ttl, do: LeaseContext.ttl_ms()
 
   @doc "Holder identity string for this scheduler instance."
   def holder, do: "scheduler-" <> Atom.to_string(node())
@@ -45,6 +46,26 @@ defmodule LearningAgent.RunContext do
 
   def get(id), do: Repo.get(Run, id)
 
+  @doc "The in-flight run for a repository, if any. One worker holds one repo lease."
+  def active_for(repository_id) do
+    terminals = ["completed", "partial", "blocked", "failed", "cancelled", "orphaned"]
+
+    from(r in Run,
+      where:
+        r.repository_id == ^repository_id and r.state not in ^terminals and
+          r.cancel_requested == false,
+      order_by: [desc: r.inserted_at],
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  @doc "Recent runs, newest first."
+  def recent(limit \\ 40) when is_integer(limit) and limit in 1..200 do
+    from(r in Run, order_by: [desc: r.inserted_at], limit: ^limit)
+    |> Repo.all()
+  end
+
   @doc "Eligible queued runs (not cancelled), oldest first."
   def eligible do
     from(r in Run,
@@ -52,6 +73,60 @@ defmodule LearningAgent.RunContext do
       order_by: r.inserted_at
     )
     |> Repo.all()
+  end
+
+  @doc """
+  Active repositories with nothing queued and nothing in flight — the stranded
+  state after a failed or lost run. Returns full repository structs; the caller
+  decides drain vs requeue. Failed runs inside `cooldown_ms` are skipped so a
+  deterministic failure cannot hot-loop.
+  """
+  def stalled_repos(cooldown_ms \\ @failure_cooldown_ms) do
+    cutoff = DateTime.add(DateTime.utc_now(), -cooldown_ms, :millisecond)
+
+    busy = @active ++ [@queued]
+
+    busy_repo_ids =
+      from(r in Run,
+        where: r.state in ^busy and r.cancel_requested == false,
+        distinct: true,
+        select: r.repository_id
+      )
+      |> Repo.all()
+      |> MapSet.new()
+
+    from(r in LearningAgent.Repository,
+      where: r.status in ["registered", "active"] and is_nil(r.disabled_at)
+    )
+    |> Repo.all()
+    |> Enum.reject(&MapSet.member?(busy_repo_ids, &1.id))
+    |> then(fn repos ->
+      case repos do
+        [] ->
+          []
+
+        repos ->
+          latest = latest_run_by_repo(Enum.map(repos, & &1.id))
+
+          Enum.reject(repos, fn repo ->
+            case Map.get(latest, repo.id) do
+              %{state: "failed", updated_at: at} -> DateTime.compare(at, cutoff) == :gt
+              _ -> false
+            end
+          end)
+      end
+    end)
+  end
+
+  defp latest_run_by_repo(ids) do
+    from(r in Run,
+      where: r.repository_id in ^ids,
+      distinct: r.repository_id,
+      order_by: [asc: r.repository_id, desc: r.updated_at, desc: r.inserted_at],
+      select: %{repository_id: r.repository_id, state: r.state, updated_at: r.updated_at}
+    )
+    |> Repo.all()
+    |> Map.new(&{&1.repository_id, &1})
   end
 
   @doc "Count of runs currently in-flight (admission headroom)."
@@ -100,10 +175,7 @@ defmodule LearningAgent.RunContext do
   Then the run's state -> claimed and its lease_epoch column records the held epoch.
   """
   def claim(run) do
-    now = DateTime.utc_now()
-    expiry = DateTime.add(now, @lease_ttl)
-
-    with {:ok, lease} <- acquire_lease(run, now, expiry) do
+    with {:ok, lease} <- LeaseContext.claim(run.repository_id, run.id, holder()) do
       q =
         from(r in Run,
           where: r.id == ^run.id and r.state == "queued" and r.cancel_requested == false
@@ -116,44 +188,6 @@ defmodule LearningAgent.RunContext do
     end
   end
 
-  defp acquire_lease(run, now, expiry) do
-    case Repo.get(Lease, run.repository_id) do
-      nil ->
-        %Lease{
-          repository_id: run.repository_id,
-          run_id: run.id,
-          holder_id: holder(),
-          epoch: 1,
-          claimed_at: now,
-          renewed_at: now,
-          expires_at: expiry
-        }
-        |> Repo.insert()
-
-      l ->
-        if DateTime.compare(l.expires_at, now) == :lt do
-          reclaim(l, run, now, expiry)
-        else
-          {:error, :still_held}
-        end
-    end
-  end
-
-  defp reclaim(l, run, now, expiry) do
-    l
-    |> Ecto.Changeset.change(
-      run_id: run.id,
-      holder_id: holder(),
-      epoch: l.epoch + 1,
-      claimed_at: now,
-      renewed_at: now,
-      expires_at: expiry,
-      released_at: nil,
-      release_outcome: nil
-    )
-    |> Repo.update()
-  end
-
   @doc "Durable cancellation intent; never flips true -> false."
   def request_cancel(run_id) do
     run = Repo.get!(Run, run_id)
@@ -161,23 +195,61 @@ defmodule LearningAgent.RunContext do
     if run.cancel_requested do
       {:ok, run}
     else
-      run
-      |> Ecto.Changeset.change(cancel_requested: true, cancel_requested_at: DateTime.utc_now())
-      |> Repo.update()
+      run =
+        run
+        |> Ecto.Changeset.change(cancel_requested: true, cancel_requested_at: DateTime.utc_now())
+        |> Repo.update!()
+
+      # Queued work never started, so no worker will observe the intent: the
+      # durable cancel completes the run now instead of stranding it queued.
+      if run.state == "queued" do
+        case unfenced_transition(run.id, "queued", "cancelled", %{
+               finished_at: DateTime.utc_now()
+             }) do
+          {:ok, cancelled} -> {:ok, cancelled}
+          _ -> {:ok, run}
+        end
+      else
+        {:ok, run}
+      end
     end
   end
 
-  @doc """
-  Recovery reset: move an orphaned non-terminal run back to queued and clear its
-  fencing epoch so a fresh claim may own it. This is a recovery-only path, not a
-  normal state-machine transition; applied only to runs whose worker/lease vanished.
-  """
+  @doc "Requeue failed IO/permission runs after the skills root becomes writable."
+  def retry_failed_io do
+    from(r in Run,
+      where:
+        r.state == "failed" and
+          (is_nil(r.failure_class) or r.failure_class in ["not_writable", "eacces"])
+    )
+    |> Repo.all()
+    |> Enum.reduce(0, fn run, n ->
+      case requeue(run) do
+        {:ok, _} -> n + 1
+        _ -> n
+      end
+    end)
+  end
+
   def requeue(run) do
+    now = DateTime.utc_now()
     q = from(r in Run, where: r.id == ^run.id)
 
     case Repo.update_all(q, set: [state: "queued", lease_epoch: nil]) do
-      {1, _} -> {:ok, Repo.get!(Run, run.id)}
-      {0, _} -> {:error, :not_found}
+      {1, _} ->
+        from(l in Lease, where: l.repository_id == ^run.repository_id)
+        |> Repo.update_all(
+          set: [
+            released_at: now,
+            release_outcome: "orphaned",
+            expires_at: DateTime.add(now, -1, :second)
+          ]
+        )
+
+        {:ok, Repo.get!(Run, run.id)}
+
+      {0, _} ->
+        {:error, :not_found}
     end
   end
 
@@ -188,16 +260,47 @@ defmodule LearningAgent.RunContext do
   @doc "Runs stuck non-terminal whose lease has expired or been released (worker vanished)."
   def orphaned do
     now = DateTime.utc_now()
+    cutoff = DateTime.add(now, -@orphan_grace_s, :second)
     states = @active
 
-    from(r in Run,
-      join: l in Lease,
-      on: l.repository_id == r.repository_id,
-      where:
-        r.state in ^states and
-          is_nil(l.released_at) and l.expires_at < ^now,
-      select: r
+    lease_orphans =
+      from(r in Run,
+        join: l in Lease,
+        on: l.repository_id == r.repository_id,
+        where:
+          r.state in ^states and
+            (not is_nil(l.released_at) or l.expires_at < ^now),
+        select: r
+      )
+      |> Repo.all()
+
+    process_orphans =
+      from(r in Run, where: r.state in ^states and r.updated_at < ^cutoff)
+      |> Repo.all()
+      |> Enum.filter(fn run -> not worker_alive?(run) end)
+
+    Enum.uniq_by(lease_orphans ++ process_orphans, & &1.id)
+  end
+
+  defp lease_holder_node(repository_id) do
+    from(l in LearningAgent.Lease,
+      where: l.repository_id == ^repository_id,
+      order_by: [desc: l.renewed_at],
+      limit: 1,
+      select: l.holder_id
     )
-    |> Repo.all()
+    |> Repo.one()
+  end
+
+  defp worker_alive?(run) do
+    case Registry.lookup(LearningAgent.Registry, run.id) do
+      [{pid, _}] ->
+        Process.alive?(pid)
+
+      _ ->
+        # The worker may live on another node: only its own scheduler may
+        # reclaim it, so a foreign holder counts as alive here.
+        lease_holder_node(run.repository_id) != Atom.to_string(node())
+    end
   end
 end

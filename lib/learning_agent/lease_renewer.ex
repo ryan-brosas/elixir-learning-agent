@@ -40,10 +40,19 @@ defmodule LearningAgent.LeaseRenewer do
 
     Repo.all(query)
     |> Enum.each(fn lease ->
-      case LeaseContext.renew(lease, lease.epoch, lease.holder_id) do
-        {:ok, _} -> :ok
-        {:error, _reason} -> :ok
+      if worker_alive?(lease.run_id) do
+        case LeaseContext.renew(lease, lease.epoch, lease.holder_id) do
+          {:ok, _} -> :ok
+          {:error, _reason} -> :ok
+        end
       end
     end)
+  end
+
+  defp worker_alive?(run_id) do
+    case Registry.lookup(LearningAgent.Registry, run_id) do
+      [{pid, _}] -> Process.alive?(pid)
+      _ -> false
+    end
   end
 end

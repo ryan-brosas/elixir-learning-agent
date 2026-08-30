@@ -624,7 +624,7 @@ Invariants proven: tool call → side effect → next turn → finish; budget ex
 
 Tests: `test/agent_loop_test.exs` (5) via a scripted provider against the live firewall + budget. No live LLM required for CI.
 
-**NEXT (candidate order):** Milestone 13 — OpenViking outbox transport (uses the live OpenViking MCP probed in M0). Milestone 14 — operator API + telemetry. Milestone 10 — Phoenix LiveView frontend (deferred until domain/API settle). Milestone 15 — container hardening (Dockerfile + roles, DD-013 required deployment).
+**NEXT (candidate order):** Live provider/OpenViking deployment probes, then Milestone 10 LiveView completion and Milestone 11 model routing/capacity. The static browser/model probe is shipped; Milestone 15 container hardening remains a deployment gate.
 
 ## 12. Milestone 10 — Phoenix LiveView control plane
 
@@ -646,6 +646,12 @@ Provide a real-time frontend for operating the whole system.
 ### Acceptance
 
 The Docker frontend exposes live system state and safe controls without bypassing domain invariants.
+
+### Status — PARTIAL (browser model dogfood surface)
+
+A dependency-free responsive browser playground is shipped at `/`. Local Compose enables loopback-bound `/v1/models`, `/v1/models/list`, and `/v1/models/test` model routes without an application bearer token; protected deployments retain role auth. The browser can save provider settings in local storage, hides API keys from responses/server persistence, and exercises the OpenAI-compatible adapter seam. The complete LiveView operations dashboard, PubSub projections, and browser E2E gate remain open.
+
+Evidence: `lib/learning_agent_web/frontend.ex`, `lib/learning_agent_web/router.ex`, `lib/learning_agent/model_gateway.ex`, `test/router_test.exs`, and `test/providers_openai_compatible_test.exs`.
 
 ## 13. Milestone 11 — multi-provider routing and worker capacity
 
@@ -737,7 +743,7 @@ Tests: `test/open_viking_publisher_test.exs` (5).
 
 **Remaining for full M13 acceptance (open, non-blocking for local completeness):** live transport wiring against a deployed OpenViking endpoint under test (a documented provisioning decision, exactly as evidence/planning-sources.md scopes).
 
-**Next:** Milestone 14 — operator API + telemetry (JSON routes /health /v1 + metrics/logs/traces). Milestone 10 — Phoenix LiveView frontend (design-required). Milestone 15 — container hardening (Dockerfile + Compose roles; DD-013 definition-of-done).
+**Next:** Live external model/OpenViking probes, then Milestone 10 LiveView completion and Milestone 11 provider routing/capacity. The static browser/model probe is shipped; Milestone 15 container hardening remains the deployment definition-of-done.
 
 ## 16. Milestone 14 — operator API and telemetry
 
@@ -764,21 +770,22 @@ Operators can run and diagnose a fixture lifecycle through supported APIs only.
 
 ### Status — COMPLETE (core operator API + telemetry, Plug)
 
-Operator + health API and telemetry events. `mix format` + strict compile clean; 110/110 tests pass.
+Operator + health API and telemetry events, now including the browser/model probe boundary. `mix format` + strict compile clean; 129/129 tests pass.
 
 - `lib/learning_agent/operator.ex` — bearer-token auth with viewer/operator/administrator roles; `authorize?` rank gate.
-- `lib/learning_agent_web/router.ex` — Plug router: `GET /health/live` (liveness), `GET /health/ready` (DB-aware readiness), `GET /v1/repositories`, `POST /v1/runs/:id/cancel`, `POST /v1/runs/:id/resolve-blocker`, `POST /v1/outbox/:id/retry`; JSON only, never exposes arbitrary tool execution.
+- `lib/learning_agent_web/router.ex` — Plug router: `GET /` browser playground, `GET /health/live` (liveness), `GET /health/ready` (DB-aware readiness), `GET /v1/models` (non-secret model status), `POST /v1/models/test` (bounded operator completion), `GET /v1/repositories`, `POST /v1/runs/:id/cancel`, `POST /v1/runs/:id/resolve-blocker`, `POST /v1/outbox/:id/retry`; never exposes arbitrary tool execution.
 - `lib/learning_agent/outbox_context.ex` — added `retry!/1` (reset failed/retry event to pending).
 - `lib/learning_agent/telemetry.ex` — declarative event names (run start/stop, lease claim/release, model.call) + /metrics text formatter; no high-cardinality source symbols in labels.
-- Dependency: `plug_cowboy` added (HTTP surface; Phoenix LiveView in M10 can wrap the same context boundaries).
+- `lib/learning_agent/model_gateway.ex` and `lib/learning_agent_web/frontend.ex` — deployment-configured model probe, provider model discovery, browser-local saved URL/key/model settings, and dependency-free browser surface; local model routes can omit bearer auth, protected routes retain environment-backed tokens, and provider API keys are never stored or returned.
+- Dependency: `plug_cowboy` provides the HTTP surface; Phoenix LiveView in M10 can wrap the same context boundaries.
 
-Invariants proven: /health/live + /health/ready open; /v1/* requires auth (401); viewer token reads repositories (200); viewer cannot reach an operator/administrator action; `/metrics` formatter emits Prometheus-style lines.
+Invariants proven: /health/live + /health/ready open; protected /v1/* requires auth (401); local loopback model routes accept browser URL/key settings; viewer token reads repositories (200); model catalog omits API keys; model list normalizes provider IDs; model test rejects unknown fields and normalizes a provider response; viewer cannot reach an operator/administrator action; `/metrics` formatter emits Prometheus-style lines.
 
-Tests: `test/router_test.exs` (5) via Plug.Test; router exercised directly against the real DB in the sandbox.
+Tests: `test/router_test.exs` (13) and `test/providers_openai_compatible_test.exs` (2); the router is exercised directly against the real DB in the sandbox.
 
 **Remaining for full M14 (open):** optional identity/auth via reverse-proxy or signed service tokens is a deployment decision (docs/04 §4); structured JSON logs + distributed tracing were declared but not yet emitted at every boundary (docs/04 §16 §18) — schemas and event names are in place.
 
-**Next:** Milestone 15 — container hardening (Dockerfile multi-stage, non-root, read-only root, Compose all-in-one + scale-out roles; DD-013 definition-of-done). Milestone 10 — Phoenix LiveView frontend (design-required).
+**Next:** Live external model/OpenViking probes, then Milestone 10 LiveView completion and Milestone 11 provider routing/capacity. Milestone 15 container hardening remains the deployment definition-of-done.
 
 ## 17. Milestone 15 — container hardening
 

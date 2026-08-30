@@ -7,7 +7,7 @@ defmodule LearningAgent.AgentLoop do
   and stops on completion/blocker/failure/cancel/budget. It never calls an
   unapproved tool and never exceeds the turn cap.
   """
-  alias LearningAgent.ToolPolicy
+  alias LearningAgent.{ModelRetry, ToolPolicy}
   alias LearningAgent.Domain.Budget
 
   @default_max_turns 20
@@ -29,7 +29,12 @@ defmodule LearningAgent.AgentLoop do
   defp turn(opts, messages, budget, turns) do
     {:ok, budget} = Budget.consume(budget, :model_calls, 1)
 
-    case opts.provider.(opts.model, messages) do
+    retry_opts = [
+      max_attempts: Map.get(opts, :model_retries, ModelRetry.limit()),
+      sleep: Map.get(opts, :retry_sleep, &ModelRetry.backoff/1)
+    ]
+
+    case ModelRetry.call(fn -> opts.provider.(opts.model, messages) end, retry_opts) do
       {:ok, %{tool_calls: []} = resp} ->
         {:ok, %{stop: :finished, text: resp.text}}
 
@@ -43,9 +48,7 @@ defmodule LearningAgent.AgentLoop do
         {:error, :parallel_calls_rejected}
 
       {:error, %{class: :timeout}} ->
-        if turns < 1,
-          do: do_run(opts, messages, budget, turns + 1),
-          else: {:error, :provider_timeout}
+        {:error, :provider_timeout}
 
       {:error, %{class: class}} ->
         {:error, {:provider, class}}
