@@ -208,6 +208,7 @@ defmodule LearningAgent.ModelGateway do
   end
 
   defp validate_connection(_), do: error(:connection_invalid)
+
   defp valid_endpoint?(value) when is_binary(value) do
     case URI.parse(value) do
       %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) ->
