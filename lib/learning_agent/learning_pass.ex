@@ -653,7 +653,7 @@ defmodule LearningAgent.LearningPass do
 
     # #{repo.display_name} - what this codebase is and how it works
 
-    #{skill_body(note)}
+    #{skill_body(note, repo)}
 
     ## Loader
     #{Enum.join(Leaf.loader_lines([ref]), "\n")}
@@ -672,27 +672,72 @@ defmodule LearningAgent.LearningPass do
   # The skill must carry the learned knowledge itself: the accumulated
   # architecture (component map, W's) and the open porting questions - not a
   # file index pointing at the note.
-  defp skill_body(note) do
-    architecture = architecture_body(note.content)
-    questions = section_body(note.content, "porter-questions")
+  # The skill distills KNOWLEDGE, not one pass: it merges the architecture
+  # and porter content of the most recent learned notes so a SKILL.md stands
+  # as the repo's accumulated memory, not a single-file stub. Identical
+  # carry-forward fallbacks dedupe away.
+  defp skill_body(_note, repo) do
+    notes = recent_notes(repo, 8)
+    sections = Enum.map(notes, &skill_content(&1))
+    {archs, questions} = Enum.unzip(sections)
 
-    if questions == "" do
-      architecture
-    else
-      architecture <> "\n\n## Open questions for a port\n\n" <> questions
-    end
-    |> String.trim_trailing()
+    arch =
+      archs
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+      |> Enum.join("\n\n---\n\n")
+
+    qs =
+      questions
+      |> Enum.reject(&(&1 == ""))
+      |> Enum.uniq()
+      |> Enum.join("\n\n")
+
+    base =
+      if qs == "" do
+        arch
+      else
+        arch <> "\n\n## Open questions for a port\n\n" <> qs
+      end
+
+    String.trim_trailing(base)
   end
 
-  defp architecture_body(content) do
-    case LearningAgent.Domain.Squeeze.section(content, "architecture") do
-      body when is_binary(body) -> String.trim(body)
-      _ -> "No accumulated architecture yet; see the pass references."
-    end
+  defp recent_notes(repo, limit) do
+    from(n in LearningNote,
+      where: n.repository_id == ^repo.id and n.status == "published",
+      order_by: [desc: n.inserted_at],
+      limit: ^limit
+    )
+    |> Repo.all()
+    |> Enum.map(& &1.content)
   end
 
-  defp section_body(content, name) do
-    case LearningAgent.Domain.Squeeze.section(content, name) do
+  defp skill_content(content) do
+    arch =
+      case LearningAgent.Domain.Squeeze.section(content, "architecture") do
+        body when is_binary(body) -> strip_architecture_headers(String.trim(body))
+        _ -> ""
+      end
+
+    {
+      arch,
+      question_section(content)
+    }
+  end
+
+  defp strip_architecture_headers(body) do
+    body
+    |> String.split("\n")
+    |> Enum.reject(
+      &(String.starts_with?(&1, "Repository \`") or
+          String.contains?(&1, "Codebase Memory project"))
+    )
+    |> Enum.join("\n")
+  end
+
+  defp question_section(content) do
+    case LearningAgent.Domain.Squeeze.section(content, "porter-questions") do
       body when is_binary(body) -> String.trim(body)
       _ -> ""
     end
