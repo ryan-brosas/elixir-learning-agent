@@ -60,7 +60,19 @@ defmodule LearningAgent.SourceReader do
   def bound(content, max_bytes) when byte_size(content) <= max_bytes, do: content
 
   def bound(content, max_bytes) do
-    binary_part(content, 0, max_bytes) <> "\n... [truncated]"
+    binary_part(content, 0, max_bytes)
+    |> sanitize_utf8()
+    |> Kernel.<>("\n... [truncated]")
+  end
+
+  @doc "Keep the longest valid UTF-8 prefix of a binary (drops stray bytes)."
+  def sanitize_utf8(bin) when is_binary(bin) do
+    case :unicode.characters_to_binary(bin, :utf8, :utf8) do
+      {:ok, valid} -> valid
+      {:error, valid, _rest} -> valid
+      {:incomplete, valid, _rest} -> valid
+      valid when is_binary(valid) -> valid
+    end
   end
 
   def sha256(bin) do

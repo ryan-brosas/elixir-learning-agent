@@ -406,7 +406,9 @@ defmodule LearningAgent.LearningPass do
       ]
 
       prompt =
-        learn_prompt(repo, run, observation, file) |> String.slice(0, @learn_max_prompt_bytes)
+        learn_prompt(repo, run, observation, file)
+        |> SourceReader.sanitize_utf8()
+        |> String.slice(0, @learn_max_prompt_bytes)
 
       payload = %{
         model: model_id,
