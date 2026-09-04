@@ -5,6 +5,7 @@ defmodule LearningAgent.FoundationProjectionRegressionTest do
 
   alias LearningAgent.{
     ArtifactSet,
+    Foundations,
     LearningPass,
     OutboxEvent,
     Repo,
@@ -84,6 +85,53 @@ defmodule LearningAgent.FoundationProjectionRegressionTest do
              event.payload["path"] =~ "/.learning-agent/generations/preserve-seams-foundation/" and
                File.dir?(event.payload["path"])
            end)
+  end
+
+  test "reusing a cached projection repairs and relinks the active foundation", %{
+    source: source,
+    skills: skills
+  } do
+    {:ok, repo} = register("cache-repair", source)
+    {:ok, first_run} = RepositoryContext.queue_pass(repo.id, pin(source))
+    first_pin_id = first_run.pin_id
+    {:ok, first_claimed, _lease} = RunContext.claim(first_run)
+    assert {:ok, first} = LearningPass.execute(first_claimed)
+
+    File.write!(Path.join(source, "alpha.ex"), "defmodule Alpha, do: :changed\n")
+
+    {:ok, second_run} =
+      RepositoryContext.queue_pass(repo.id, %{
+        root: source,
+        branch: "main",
+        commit_sha: "def456"
+      })
+
+    {:ok, second_claimed, _lease} = RunContext.claim(second_run)
+    assert {:ok, second} = LearningPass.execute(second_claimed)
+    refute second.manifest_digest == first.manifest_digest
+
+    {:ok, replay_run} = RunContext.create(repo.id, first_pin_id, 3)
+    assert {:ok, replayed} = Foundations.project(RepositoryContext.get(repo.id), replay_run, nil)
+    refute replayed.unchanged
+    assert replayed.manifest_digest == first.manifest_digest
+
+    expected_generation =
+      Path.join([
+        skills,
+        ".learning-agent",
+        "generations",
+        "cache-repair-foundation",
+        first.manifest_digest
+      ])
+
+    {:ok, target} = File.read_link(replayed.active)
+    assert Path.expand(target, Path.dirname(replayed.active)) == expected_generation
+
+    File.rm!(replayed.active)
+    {:ok, repair_run} = RunContext.create(repo.id, first_pin_id, 4)
+    assert {:ok, repaired} = Foundations.project(RepositoryContext.get(repo.id), repair_run, nil)
+    refute repaired.unchanged
+    assert File.exists?(Path.join(repaired.active, "SKILL.md"))
   end
 
   test "the model prompt does not receive the full prior note", %{source: source} do

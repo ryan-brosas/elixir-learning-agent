@@ -63,6 +63,39 @@ defmodule LearningAgent.FoundationsContextTest do
     assert length(Foundations.accepted_capsules(repository.id, pin.id)) == 2
   end
 
+  test "multiple seam acceptance rolls back when any seam conflicts" do
+    {repository, pin} = repository_and_pin("atomic-seams")
+    {:ok, first_run} = RunContext.create(repository.id, pin.id, 1)
+
+    first_attrs =
+      observation_attrs(repository.id, pin.id, first_run.id, 1, "lib/worker.ex", "abc")
+
+    {:ok, first_observation} = Foundations.record_observation(first_attrs)
+    assert {:ok, [_]} = Foundations.accept_observed_seams(first_observation)
+
+    {:ok, second_run} = RunContext.create(repository.id, pin.id, 2)
+
+    router =
+      observation_attrs(repository.id, pin.id, second_run.id, 2, "lib/router.ex", "abc").direct_evidence
+
+    conflicting_worker =
+      first_attrs.direct_evidence
+      |> Map.put("excerpt", "changed behavior")
+      |> Map.put("digest", LearningAgent.Notes.digest("changed behavior"))
+
+    second_attrs =
+      observation_attrs(repository.id, pin.id, second_run.id, 2, "lib/router.ex", "abc")
+      |> Map.put(:source_paths, ["lib/router.ex", "lib/worker.ex"])
+      |> Map.put(:direct_evidence, %{"seams" => [router, conflicting_worker]})
+
+    {:ok, second_observation} = Foundations.record_observation(second_attrs)
+    assert {:error, :capsule_conflict} = Foundations.accept_observed_seams(second_observation)
+
+    assert Enum.map(Foundations.accepted_capsules(repository.id, pin.id), & &1.source_path) == [
+             "lib/worker.ex"
+           ]
+  end
+
   test "a capsule requires direct test evidence or an explicit caveat" do
     changeset =
       FoundationCapsule.changeset(%FoundationCapsule{}, %{

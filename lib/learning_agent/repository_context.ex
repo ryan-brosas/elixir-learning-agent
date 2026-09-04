@@ -58,6 +58,13 @@ defmodule LearningAgent.RepositoryContext do
     end)
   end
 
+  @doc "Return the explicitly active pin, falling back to the latest observed pin."
+  def current_pin(%Repository{active_pin_id: pin_id} = repository) do
+    if pin_id,
+      do: Repo.get(RepositoryPin, pin_id) || latest_pin(repository.id),
+      else: latest_pin(repository.id)
+  end
+
   def latest_pin(repository_id) do
     import Ecto.Query
 
@@ -75,7 +82,7 @@ defmodule LearningAgent.RepositoryContext do
 
       find_pin(repo.id, attrs) || create_pin!(repo, attrs)
     else
-      latest_pin(repo.id) || create_pin!(repo, normalized_pin(repo, %{}))
+      current_pin(repo) || create_pin!(repo, normalized_pin(repo, %{}))
     end
   end
 

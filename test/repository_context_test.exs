@@ -61,6 +61,36 @@ defmodule LearningAgent.RepositoryTest do
     assert Repo.aggregate(RepositoryPin, :count, :id) == 2
   end
 
+  test "implicit follow-up passes continue from the active pin" do
+    {:ok, repo} = repo("active-pin")
+
+    {:ok, older} =
+      RepositoryContext.add_pin(repo.id, %{
+        root: repo.source_locator,
+        branch: "main",
+        commit_sha: "older"
+      })
+
+    {:ok, _newer} =
+      RepositoryContext.add_pin(repo.id, %{
+        root: repo.source_locator,
+        branch: "main",
+        commit_sha: "newer"
+      })
+
+    assert {:ok, selected} =
+             RepositoryContext.queue_pass(repo.id, %{
+               root: repo.source_locator,
+               branch: "main",
+               commit_sha: "older"
+             })
+
+    assert selected.pin_id == older.id
+    assert {:ok, follow_up} = RepositoryContext.queue_pass(repo.id)
+    assert follow_up.pin_id == older.id
+    assert RepositoryContext.current_pin(RepositoryContext.get(repo.id)).id == older.id
+  end
+
   defp repo(slug) do
     RepositoryContext.register(%{
       slug: slug,

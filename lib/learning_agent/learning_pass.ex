@@ -62,11 +62,11 @@ defmodule LearningAgent.LearningPass do
          {:ok, observation} <- observe(repository, run, pin, model),
          {:ok, recorded} <-
            Foundations.record_observation(observation_attrs(repository, run, observation, model)),
-         {:ok, _capsules} <- Foundations.accept_observed_seams(recorded),
          {:ok, run} <- step(run, "preflight", "note_drafting"),
          {:ok, note} <-
            Notes.create(run.id, repository.id, note_body(repository, run, observation, model)),
          {:ok, published_note} <- Notes.publish(note, notes_root()),
+         {:ok, _capsules} <- Foundations.accept_observed_seams(recorded),
          {:ok, run} <- step(run, "note_drafting", "note_published"),
          {:ok, run} <- step(run, "note_published", "exploring"),
          {:ok, run} <- step(run, "exploring", "evidence_gathering"),
@@ -114,7 +114,7 @@ defmodule LearningAgent.LearningPass do
   end
 
   def drained?(repository) do
-    case RepositoryContext.latest_pin(repository.id) do
+    case RepositoryContext.current_pin(repository) do
       %RepositoryPin{id: pin_id} ->
         items = inventory(repository)
 
@@ -127,7 +127,7 @@ defmodule LearningAgent.LearningPass do
   end
 
   def uncovered_files(repository) do
-    case RepositoryContext.latest_pin(repository.id) do
+    case RepositoryContext.current_pin(repository) do
       %RepositoryPin{id: pin_id} -> uncovered_files(repository, pin_id)
       _ -> inventory(repository)
     end

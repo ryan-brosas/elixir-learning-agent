@@ -41,18 +41,17 @@ defmodule LearningAgent.Foundations do
 
   @doc "Accept every directly evidenced seam in an observation; zero seams is valid."
   def accept_observed_seams(%PassObservation{} = observation) do
-    observation.direct_evidence
-    |> evidence_items()
-    |> Enum.reduce_while({:ok, []}, fn evidence, {:ok, capsules} ->
-      case accept_evidence(observation, evidence) do
-        {:ok, capsule} -> {:cont, {:ok, [capsule | capsules]}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
+    Repo.transaction(fn ->
+      observation.direct_evidence
+      |> evidence_items()
+      |> Enum.reduce_while([], fn evidence, capsules ->
+        case accept_evidence(observation, evidence) do
+          {:ok, capsule} -> {:cont, [capsule | capsules]}
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+      |> Enum.reverse()
     end)
-    |> case do
-      {:ok, capsules} -> {:ok, Enum.reverse(capsules)}
-      error -> error
-    end
   end
 
   @doc "Compatibility wrapper returning the first accepted seam, if any."
@@ -173,8 +172,15 @@ defmodule LearningAgent.Foundations do
 
       case active_artifact(repository.id, run.pin_id, manifest.manifest_digest) do
         %ArtifactSet{} = artifact ->
-          link_run_and_repository(run, repository, artifact)
-          {:ok, projection_result(artifact, true)}
+          with {:ok, published} <-
+                 Publisher.publish_foundation(Root.path(), repository.slug, files),
+               true <- published.manifest_digest == artifact.manifest_digest,
+               {:ok, _links} <- link_run_and_repository(run, repository, artifact) do
+            {:ok, projection_result(artifact, published.unchanged)}
+          else
+            false -> {:error, :manifest_mismatch}
+            {:error, reason} -> {:error, reason}
+          end
 
         nil ->
           publish_new(repository, run, note, files, manifest)
