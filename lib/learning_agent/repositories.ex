@@ -17,6 +17,8 @@ defmodule LearningAgent.Repository do
     field(:status, :string, default: "registered")
     field(:next_pass_number, :integer, default: 1)
     field(:disabled_at, :utc_datetime_usec)
+    field(:active_pin_id, :binary_id)
+    field(:active_generation_id, :binary_id)
     timestamps(type: :utc_datetime_usec)
 
     has_many(:pins, LearningAgent.RepositoryPin)
@@ -26,7 +28,18 @@ defmodule LearningAgent.Repository do
 
   def changeset(repo, attrs) do
     repo
-    |> cast(attrs, @required ++ [:canonical_root, :status, :next_pass_number, :disabled_at])
+    |> cast(
+      attrs,
+      @required ++
+        [
+          :canonical_root,
+          :status,
+          :next_pass_number,
+          :disabled_at,
+          :active_pin_id,
+          :active_generation_id
+        ]
+    )
     |> validate_required(@required)
     |> unique_constraint(:slug, name: :repositories_slug_index)
   end

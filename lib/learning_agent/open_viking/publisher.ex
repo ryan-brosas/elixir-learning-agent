@@ -47,6 +47,9 @@ defmodule LearningAgent.OpenViking.Publisher do
   defp deliver(client, "add_capsule", payload, event),
     do: add_and_upload(client, payload, event)
 
+  defp deliver(client, "materialize_foundation", payload, event),
+    do: add_and_upload(client, payload, event)
+
   defp deliver(client, "verify_symbol", payload, _event) do
     case client.find.(Map.get(payload, "query", ""), []) do
       {:ok, [_hit | _]} -> {:ok, :verified}

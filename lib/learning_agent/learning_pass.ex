@@ -1,194 +1,390 @@
 defmodule LearningAgent.LearningPass do
   @moduledoc """
-  One automatic learn → note → skill pass.
+  One automatic repository-pin → immutable observation → accepted seam →
+  complete `<slug>-foundation` projection pass.
 
-  Observes a registered repository (source listing, optional Codebase Memory),
-  publishes a learning note first, then writes a foundation leaf under
-  `.agents/skills/<slug>/`. The worker never writes outside that root.
+  Automatic execution emits foundations only. Procedure promotion is a separate
+  future operator boundary and is never available to this worker.
   """
   require Logger
 
   alias LearningAgent.{
     Activity,
+    Foundations,
+    LeaseContext,
     ModelGateway,
     ModelRetry,
     Notes,
-    LearningNote,
     Repo,
     RepositoryContext,
+    RepositoryPin,
     RunContext,
-    LeaseContext,
-    OutboxContext,
     SourceReader
   }
 
+  alias LearningAgent.Domain.Run, as: RunDomain
   alias LearningAgent.Providers.OpenAICompatible
-
-  import Ecto.Query
+  alias LearningAgent.Skills.Root
 
   @skip_dirs MapSet.new(["node_modules", "deps", "_build", "dist", "target", "cover", "vendor"])
   @source_exts MapSet.new([".ex", ".exs", ".md", ".py", ".ts", ".js", ".rs", ".go", ".json"])
-  @grounding_max_bytes 2 * 1024
-  # A 200-file walk cap let a 29k-file repo "drain" after 200 passes; breadth
-  # still needs a bound, but 10x deeper before a repo can claim coverage.
   @inventory_max_files 2_000
-  alias LearningAgent.Domain.Run, as: RunDomain
-  alias LearningAgent.Skills.{Capsule, Leaf, Root, Store, Synthesizer}
+  @grounding_max_bytes 2 * 1_024
+  @evidence_max_bytes 8 * 1_024
+  @learn_max_bytes 24 * 1_024
+  @learn_read_lines 400
+  @learn_max_tokens 2_048
+  @learn_max_prompt_bytes 24_000
+  @component_study_files 8
+  @component_file_bytes 8 * 1_024
+  @component_file_lines 160
 
   def abort(run, reason), do: fail(run, reason)
 
   def execute(run, model \\ nil) do
-    repo = RepositoryContext.get(run.repository_id) || {:error, :not_found}
+    repository = RepositoryContext.get(run.repository_id) || {:error, :not_found}
 
-    case repo do
-      %LearningAgent.Repository{} = r ->
-        Activity.log(
-          :info,
-          "pass started `#{r.slug}` pass #{run.pass_number}" <> model_tag(model),
-          %{
-            repo: r.slug,
-            pass: run.pass_number
-          }
-        )
-
-      _ ->
-        :ok
+    if match?(%LearningAgent.Repository{}, repository) do
+      Activity.log(
+        :info,
+        "foundation pass started `#{repository.slug}` pass #{run.pass_number}" <> model_tag(model),
+        %{
+          repo: repository.slug,
+          pass: run.pass_number,
+          phase: "observation"
+        }
+      )
     end
 
-    with %LearningAgent.Repository{} = repo <- repo,
+    with %LearningAgent.Repository{} = repository <- repository,
+         %RepositoryPin{} = pin <- Repo.get(RepositoryPin, run.pin_id),
          {:ok, run} <- step(run, "claimed", "preflight"),
-         {:ok, observation} <- observe(repo),
+         {:ok, observation} <- observe(repository, run, pin, model),
+         {:ok, recorded} <-
+           Foundations.record_observation(observation_attrs(repository, run, observation, model)),
+         {:ok, _capsules} <- Foundations.accept_observed_seams(recorded),
          {:ok, run} <- step(run, "preflight", "note_drafting"),
          {:ok, note} <-
-           Notes.create(run.id, repo.id, effective_body(repo, run, observation, model)),
-         {:ok, published} <- Notes.publish(note, notes_root()),
+           Notes.create(run.id, repository.id, note_body(repository, run, observation, model)),
+         {:ok, published_note} <- Notes.publish(note, notes_root()),
          {:ok, run} <- step(run, "note_drafting", "note_published"),
          {:ok, run} <- step(run, "note_published", "exploring"),
          {:ok, run} <- step(run, "exploring", "evidence_gathering"),
          {:ok, run} <- step(run, "evidence_gathering", "synthesizing"),
-         {:ok, files} <- synthesize(repo, run, observation, published),
          {:ok, run} <- step(run, "synthesizing", "validating"),
-         {:ok, dest} <- Store.write_leaf(repo.slug, files),
-         :ok <- enqueue_openviking(repo, run, published, dest),
+         {:ok, projection} <- Foundations.project(repository, run, published_note),
          {:ok, run} <- step(run, "validating", "publishing"),
          {:ok, run} <- step(run, "publishing", "recording_result"),
          {:ok, run} <-
            step(run, "recording_result", "completed", %{finished_at: DateTime.utc_now()}) do
       release(run, "completed")
-      maybe_requeue(repo, run)
-      Logger.info("learning_pass_complete run=#{run.id} skill=#{dest}")
+      maybe_requeue(repository, run)
 
       Activity.log(
         :ok,
-        "pass completed `#{repo.slug}` pass #{run.pass_number} · skill written",
+        "foundation pass completed `#{repository.slug}` pass #{run.pass_number} · projection active",
         %{
-          repo: repo.slug,
-          pass: run.pass_number
+          repo: repository.slug,
+          pass: run.pass_number,
+          foundation_projection_id: projection.artifact.id,
+          manifest_digest: projection.manifest_digest,
+          unchanged: projection.unchanged
         }
       )
 
-      {:ok, %{run: run, skill: dest, note: published.file_path}}
+      {:ok,
+       %{
+         run: run,
+         foundation_projection: projection.active,
+         foundation: projection.active,
+         foundation_projection_id: projection.artifact.id,
+         manifest_digest: projection.manifest_digest,
+         unchanged: projection.unchanged,
+         note: published_note.file_path
+       }}
     else
-      {:error, reason} = err ->
+      {:error, reason} = error ->
         fail(run, reason)
-        err
+        error
+
+      nil ->
+        fail(run, :pin_not_found)
+        {:error, :pin_not_found}
     end
   end
 
-  def drained?(repo) do
-    notes = note_bodies(repo.id)
-    LearningAgent.Domain.Squeeze.closed?(inventory(repo), notes)
-  end
+  def drained?(repository) do
+    case RepositoryContext.latest_pin(repository.id) do
+      %RepositoryPin{id: pin_id} ->
+        items = inventory(repository)
 
-  def uncovered_files(repo) do
-    notes = note_bodies(repo.id)
-    LearningAgent.Domain.Squeeze.uncovered(inventory(repo), notes)
-  end
+        (items != [] and uncovered_files(repository, pin_id) == []) or
+          (items == [] and Foundations.observed?(repository.id, pin_id))
 
-  defp model_tag(nil), do: ""
-  defp model_tag(model), do: " · model " <> model
-
-  defp repo_slug_for(run) do
-    case RepositoryContext.get(run.repository_id) do
-      %{} = r -> r.slug
-      _ -> "unknown"
+      _ ->
+        false
     end
   end
 
-  defp class_of(%{class: c}), do: c
-  defp class_of(_), do: :error
+  def uncovered_files(repository) do
+    case RepositoryContext.latest_pin(repository.id) do
+      %RepositoryPin{id: pin_id} -> uncovered_files(repository, pin_id)
+      _ -> inventory(repository)
+    end
+  end
 
-  defp model_line(nil), do: ""
-  defp model_line(""), do: ""
-  defp model_line(model), do: "\nAssigned model `" <> model <> "`."
+  defp uncovered_files(repository, pin_id) do
+    covered = Foundations.covered_paths(repository.id, pin_id) |> MapSet.new()
+    Enum.reject(inventory(repository), &MapSet.member?(covered, &1))
+  end
 
-  defp observe(repo) do
-    remaining = uncovered_files(repo)
+  defp observe(repository, run, pin, model) do
+    remaining = uncovered_files(repository, pin.id)
     selected = List.first(remaining)
+    direct_evidence = direct_evidence(repository, selected, pin)
 
     {:ok,
      %{
        files: remaining,
-       memory: memory_blurb(repo.graph_project),
-       architecture: architecture_grounding(repo.graph_project),
+       memory: memory_blurb(repository.graph_project),
+       architecture: architecture_grounding(repository.graph_project),
        component: component_of(selected),
-       selected: selected || repo.slug,
+       selected: selected,
        remaining: max(length(remaining) - 1, 0),
-       prior: prior_memory(repo.id)
+       prior: %{note: nil, count: run.pass_number - 1},
+       context: Foundations.prior_context(repository.id, pin.id),
+       direct_evidence: direct_evidence,
+       pin: pin,
+       model: model
      }}
   end
 
-  defp component_of(selected) when is_binary(selected) do
-    case String.split(selected, "/", parts: 2) do
-      [component, _rest] -> component <> "/"
+  defp observation_attrs(repository, run, observation, model) do
+    source_paths = if is_binary(observation.selected), do: [observation.selected], else: []
+
+    %{
+      repository_id: repository.id,
+      run_id: run.id,
+      pin_id: run.pin_id,
+      pass_number: run.pass_number,
+      source_paths: source_paths,
+      direct_evidence: observation.direct_evidence,
+      model: observation_model(model),
+      coverage: %{"selected" => observation.selected, "remaining" => observation.remaining},
+      unresolved: observation.files |> Enum.drop(1) |> Enum.take(100),
+      omissions: [],
+      observed_at: DateTime.utc_now()
+    }
+  end
+
+  defp observation_model(model) when is_binary(model) and model != "", do: model
+
+  defp observation_model(_model) do
+    case ModelGateway.connection() do
+      %{enabled: true, model: model} when is_binary(model) and model != "" -> model
       _ -> nil
     end
   end
 
-  defp component_of(_), do: nil
+  defp direct_evidence(_repository, nil, _pin), do: %{}
 
-  defp architecture_grounding(project) do
-    case LearningAgent.MCP.Bridge.architecture(project) do
-      {:ok, value} ->
-        value
-        |> grounding_text()
-        |> String.slice(0, @grounding_max_bytes)
+  defp direct_evidence(repository, selected, pin) do
+    with {:ok, absolute} <- SourceReader.resolve(repository.source_locator, selected),
+         {:ok, material} <- study_material(absolute) do
+      excerpt =
+        material.content |> SourceReader.sanitize_utf8() |> String.slice(0, @evidence_max_bytes)
 
-      _ ->
-        nil
+      revision = pin.commit_sha || pin.graph_generation || "unpinned"
+      test_path? = Regex.match?(~r/(^|\/)(test|tests|spec)(\/|_)|_test\.|\.spec\./i, selected)
+
+      %{
+        "source_path" => selected,
+        "excerpt" => excerpt,
+        "digest" => Notes.digest(excerpt),
+        "revision" => revision,
+        "test_evidence" =>
+          if(test_path?, do: "Direct test source excerpt from `#{selected}`", else: nil),
+        "test_caveat" =>
+          if(test_path?,
+            do: nil,
+            else:
+              "No direct test was observed in this pass; behavior is bounded to the source excerpt"
+          ),
+        "question" => "What stable behavior is exposed by `#{selected}`?",
+        "boundary" => "The source unit `#{selected}` at repository pin `#{revision}`.",
+        "invariant" =>
+          "Claims must remain consistent with the recorded source excerpt and digest.",
+        "limits" => "No behavior outside this source unit or unobserved tests is implied."
+      }
+    else
+      _ -> %{}
     end
   end
 
-  defp grounding_text(value) when is_binary(value), do: value
+  defp note_body(repository, run, observation, model) do
+    case learn(repository, run, observation, model) do
+      {:ok, text} ->
+        header =
+          "Repository `#{repository.slug}` at pin `#{observation.pin.commit_sha || "unpinned"}`, " <>
+            "pass #{run.pass_number}.\n#{observation.memory}#{model_line(model)}\n"
 
-  defp grounding_text(%{"content" => content}) when is_list(content) do
-    content |> Enum.map(&Map.get(&1, "text", "")) |> Enum.join("\n")
+        text |> ensure_covered(observation.selected) |> prepend_architecture_intro(header)
+
+      :fallback ->
+        template_note(repository, run, observation)
+    end
   end
 
-  defp grounding_text(%{"summary" => summary}) when is_binary(summary), do: summary
-  defp grounding_text(_), do: ""
+  defp template_note(repository, run, observation) do
+    covered =
+      if observation.selected, do: "- `#{observation.selected}`", else: "- (no source observed)"
 
-  # The note is the durable memory: the newest published note is fed back into
-  # the next pass so learning is cumulative, never zero-context.
-  defp prior_memory(repository_id) do
-    latest =
-      from(n in LearningNote,
-        where: n.repository_id == ^repository_id and n.status == "published",
-        order_by: [desc: n.inserted_at],
-        limit: 1,
-        select: n.content
-      )
-      |> Repo.one()
+    partial =
+      observation.files
+      |> Enum.drop(if(observation.selected, do: 1, else: 0))
+      |> Enum.take(50)
+      |> case do
+        [] -> "No unread source items remain."
+        paths -> Enum.map_join(paths, "\n", &"- `#{&1}`")
+      end
 
-    count = length(note_bodies(repository_id))
+    selected = observation.selected || "none"
 
-    %{note: latest, count: count}
+    """
+    # architecture
+    Repository `#{repository.slug}` at pin `#{observation.pin.commit_sha || "unpinned"}`, pass #{run.pass_number}.
+    #{observation.memory}
+
+    # covered
+    #{covered}
+
+    # partial/uncited
+    #{partial}
+
+    # porter-questions
+    What stable seam, if any, is supported by direct evidence from `#{selected}`?
+
+    # selected-subsystem
+    #{selected}
+    """
   end
 
-  defp inventory(repo) do
-    repo.source_locator
-    |> list_source()
+  @doc "Generate one pass work record from direct evidence plus bounded current-pin projection context."
+  def learn(repository, run, observation, model) do
+    with %{} = connection <- ModelGateway.connection(),
+         true <- connection.enabled and is_binary(connection.base_url),
+         model_id = model || connection.model,
+         true <- is_binary(model_id) and model_id != "",
+         {:ok, file} <- learning_material(repository, observation) do
+      complete =
+        Application.get_env(:learning_agent, :note_complete, &OpenAICompatible.complete/1)
+
+      retry = [max_attempts: min(ModelRetry.limit(), 30), sleep: &ModelRetry.backoff/1]
+
+      prompt =
+        learn_prompt(repository, run, observation, file)
+        |> SourceReader.sanitize_utf8()
+        |> String.slice(0, @learn_max_prompt_bytes)
+
+      payload = %{
+        model: model_id,
+        messages: [%{role: :user, content: [%{type: :text, text: prompt}]}],
+        base_url: connection.base_url,
+        api_key: connection.api_key,
+        timeout_ms: connection.timeout_ms || 15_000,
+        max_tokens: @learn_max_tokens
+      }
+
+      case ModelRetry.call(fn -> complete.(payload) end, retry) do
+        {:ok, %{text: text}} when is_binary(text) and byte_size(text) <= @learn_max_bytes ->
+          if Notes.Validator.validate(text) == :ok, do: {:ok, text}, else: :fallback
+
+        _ ->
+          :fallback
+      end
+    else
+      _ -> :fallback
+    end
   end
+
+  defp learning_material(_repository, %{direct_evidence: %{"excerpt" => excerpt}})
+       when is_binary(excerpt) do
+    {:ok, %{content: excerpt, truncated: byte_size(excerpt) >= @evidence_max_bytes}}
+  end
+
+  defp learning_material(repository, observation) do
+    with selected when is_binary(selected) <- observation.selected,
+         {:ok, absolute} <- SourceReader.resolve(repository.source_locator, selected) do
+      study_material(absolute)
+    else
+      _ -> {:error, :no_source}
+    end
+  end
+
+  defp learn_prompt(repository, run, observation, file) do
+    context =
+      get_in(observation, [:context, :text]) ||
+        "{\"seams\":[],\"coverage\":[],\"unresolved\":[],\"omissions\":[]}"
+
+    """
+    You are recording one immutable observation for repository `#{repository.slug}`.
+    This is pass #{run.pass_number}. Do not produce a procedure or a cumulative note.
+    Keep exactly these five markdown sections: # architecture, # covered,
+    # partial/uncited, # porter-questions, # selected-subsystem.
+    State only what the provided source shows. Preserve unresolved uncertainty.
+    Describe WHAT it does, WHO uses it and what it calls, WHERE it sits in the flow,
+    WHEN it runs, and HOW it works, without extending beyond direct evidence.
+
+    #{architecture_line(observation)}Memory from previous passes (bounded current-pin seams, coverage, unresolved items, and omissions only):
+    #{context}
+
+    This pass studies `#{observation.selected}`#{component_line(observation)} (truncated: #{file.truncated}):
+    #{file.content}
+
+    Return this pass's observation record with all five sections.
+    """
+  end
+
+  defp study_material(absolute) do
+    if File.dir?(absolute),
+      do: component_material(absolute),
+      else: SourceReader.read(absolute, 1, @learn_read_lines, max_bytes: @learn_max_bytes)
+  end
+
+  defp component_material(directory) do
+    parts =
+      directory
+      |> component_files()
+      |> Enum.map(fn absolute ->
+        case SourceReader.read(absolute, 1, @component_file_lines,
+               max_bytes: @component_file_bytes
+             ) do
+          {:ok, file} -> "## #{Path.relative_to(absolute, directory)}\n#{file.content}"
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+
+    if parts == [],
+      do: {:error, {:read_error, :empty_component}},
+      else: {:ok, %{content: Enum.join(parts, "\n\n"), truncated: false}}
+  end
+
+  defp component_files(directory) do
+    directory
+    |> Path.join("**/*")
+    |> Path.wildcard()
+    |> Enum.filter(&File.regular?/1)
+    |> Enum.sort_by(fn path ->
+      case File.stat(path) do
+        {:ok, stat} -> -stat.size
+        _ -> 0
+      end
+    end)
+    |> Enum.take(@component_study_files)
+  end
+
+  defp inventory(repository), do: list_source(repository.source_locator)
 
   defp list_source(path) when is_binary(path) do
     root = Path.expand(path)
@@ -196,15 +392,6 @@ defmodule LearningAgent.LearningPass do
     if source_allowed?(root) and File.dir?(root) do
       components = component_keys(root)
       files = walk_source(root, root, [], @inventory_max_files) |> Enum.reverse() |> Enum.sort()
-
-      if length(files) >= @inventory_max_files do
-        require Logger
-
-        Logger.warning(
-          "source_inventory_truncated root=#{root} cap=#{@inventory_max_files} — coverage will not reach every file"
-        )
-      end
-
       Enum.uniq(components ++ files)
     else
       []
@@ -227,58 +414,48 @@ defmodule LearningAgent.LearningPass do
     end
   end
 
-  defp walk_source(_root, _dir, acc, max) when length(acc) >= max, do: acc
+  defp walk_source(_root, _directory, accumulator, max) when length(accumulator) >= max,
+    do: accumulator
 
-  defp walk_source(root, dir, acc, max) do
-    case File.ls(dir) do
+  defp walk_source(root, directory, accumulator, max) do
+    case File.ls(directory) do
       {:ok, names} ->
-        Enum.reduce(names, acc, fn name, acc ->
+        Enum.reduce(names, accumulator, fn name, acc ->
+          path = Path.join(directory, name)
+
           cond do
             length(acc) >= max ->
               acc
 
-            String.starts_with?(name, ".") ->
+            String.starts_with?(name, ".") or MapSet.member?(@skip_dirs, name) ->
               acc
 
-            MapSet.member?(@skip_dirs, name) ->
-              acc
+            File.dir?(path) ->
+              walk_source(root, path, acc, max)
+
+            File.regular?(path) and
+                MapSet.member?(@source_exts, String.downcase(Path.extname(name))) ->
+              [Path.relative_to(path, root) | acc]
 
             true ->
-              path = Path.join(dir, name)
-
-              cond do
-                File.dir?(path) ->
-                  walk_source(root, path, acc, max)
-
-                File.regular?(path) and
-                    MapSet.member?(@source_exts, String.downcase(Path.extname(name))) ->
-                  [Path.relative_to(path, root) | acc]
-
-                true ->
-                  acc
-              end
+              acc
           end
         end)
 
       _ ->
-        acc
+        accumulator
     end
   end
 
-  defp note_bodies(repository_id) do
-    from(n in LearningNote, where: n.repository_id == ^repository_id, select: n.content)
-    |> Repo.all()
-  end
-
-  defp source_allowed?(abs) do
+  defp source_allowed?(absolute) do
     configured =
       Application.get_env(:learning_agent, :source_root, "sources")
       |> List.wrap()
       |> Kernel.++(["/sources", "sources"])
       |> Enum.map(&Path.expand/1)
-      |> Enum.any?(fn root -> abs == root or String.starts_with?(abs, root <> "/") end)
+      |> Enum.any?(fn root -> absolute == root or String.starts_with?(absolute, root <> "/") end)
 
-    configured or (not String.contains?(abs, "..") and File.dir?(abs))
+    configured or (not String.contains?(absolute, "..") and File.dir?(absolute))
   end
 
   defp memory_blurb(project) do
@@ -287,327 +464,48 @@ defmodule LearningAgent.LearningPass do
         "Codebase Memory project `#{project}` status=#{pin.status} root=#{pin.root || "unknown"}."
 
       {:error, reason} ->
-        "Codebase Memory project `#{project}` is the navigation surface; live MCP was #{inspect(reason)}."
+        "Codebase Memory is optional and unavailable: #{inspect(reason)}."
     end
   end
 
-  @learn_max_bytes 24 * 1024
-  @learn_read_lines 400
-  @learn_max_tokens 2_048
-  # top-tools-ai rejects prompts >= ~32KB with 429 (quota by payload size);
-  # clamp the assembled prompt so every pass fits, and the retry ladder only
-  # ever rides genuine transient 429s instead of structural ones.
-  @learn_max_prompt_bytes 24_000
-  @learn_prior_bytes 8 * 1024
-  # Component passes study the component's own files, biggest first, instead of
-  # failing on a directory read and faking coverage with a template note.
-  @component_study_files 8
-  @component_file_bytes 8 * 1024
-  @component_file_lines 160
-
-  defp note_body(repo, run, observation, model) do
-    case learn(repo, run, observation, model) do
-      {:ok, text} ->
-        header =
-          "Repository `#{repo.slug}` at `#{repo.source_locator}` (graph `#{repo.graph_project}`), " <>
-            "pass #{run.pass_number}.\n#{observation.memory}#{model_line(model)}\n"
-
-        text
-        |> ensure_covered(observation.selected)
-        |> prepend_architecture_intro(header)
-
-      :fallback ->
-        template_note(repo, run, observation, prior_body(repo))
+  defp architecture_grounding(project) do
+    case LearningAgent.MCP.Bridge.architecture(project) do
+      {:ok, value} -> value |> grounding_text() |> String.slice(0, @grounding_max_bytes)
+      _ -> nil
     end
   end
 
-  # A model failure must never erase prior knowledge: the fallback note
-  # carries the previous note forward (memory accumulates across passes) and
-  # only re-marks the current file as covered. The partial/uncited list is
-  # bounded so it cannot crowd the next session's prompt with file names.
-  defp template_note(repo, run, observation, prior) do
-    covered =
-      if observation.selected == nil do
-        "- (no remaining unread files)"
-      else
-        "- `" <> observation.selected <> "`"
-      end
+  defp grounding_text(value) when is_binary(value), do: value
 
-    if is_binary(prior) and complete_sections?(prior) do
-      prior
-      |> ensure_covered(observation.selected)
-      |> prepend_fallback_header(repo, run, covered)
-    else
-      fresh_template(repo, run, observation, covered)
-    end
-  end
+  defp grounding_text(%{"content" => content}) when is_list(content),
+    do: Enum.map_join(content, "\n", &Map.get(&1, "text", ""))
 
-  defp fresh_template(repo, run, observation, covered) do
-    unread =
-      observation.files
-      |> List.wrap()
-      |> Enum.reject(&(&1 == observation.selected))
-      |> Enum.take(50)
-
-    partial =
-      if unread == [] do
-        "No unread source files remain; this repository is drained."
-      else
-        Enum.map_join(unread, "
-", &("- `" <> &1 <> "`"))
-      end
-
-    selected = observation.selected || repo.slug
-
-    yes = """
-    # architecture
-    Repository `#{repo.slug}` at `#{repo.source_locator}` (graph `#{repo.graph_project}`), pass #{run.pass_number}.
-    #{observation.memory}#{model_line(nil)}
-
-    # covered
-    #{covered}
-
-    # partial/uncited
-    #{partial}
-
-    # porter-questions
-    What is the first reusable seam to encode from `#{selected}`?
-
-    # selected-subsystem
-    #{selected}
-    """
-
-    yes
-  end
-
-  defp complete_sections?(content) do
-    Enum.all?(
-      ["architecture", "porter-questions", "selected-subsystem", "covered", "partial/uncited"],
-      &String.contains?(String.downcase(content), &1)
-    )
-  end
-
-  defp prepend_fallback_header(text, repo, run, covered) do
-    header =
-      "
-
-> Fallback (no model output) pass #{run.pass_number} for `#{repo.slug}`: prior knowledge carried forward.
-
-" <>
-        "# covered
-#{covered}
-
-"
-
-    text
-    |> String.replace(
-      "# covered
-",
-      header,
-      global: false
-    )
-  end
-
-  defp effective_body(repo, run, observation, model) do
-    if observation.files == [] or observation.selected == repo.slug do
-      # Nothing left to study (drained relearn): carry the prior published note
-      # forward instead of clobbering real knowledge with an empty template.
-      case prior_body(repo) do
-        nil -> note_body(repo, run, observation, model)
-        body -> body
-      end
-    else
-      note_body(repo, run, observation, model)
-    end
-  end
-
-  defp prior_body(repo) do
-    from(n in LearningNote,
-      where: n.repository_id == ^repo.id and n.status == "published",
-      order_by: [desc: n.inserted_at],
-      limit: 1,
-      select: n.content
-    )
-    |> Repo.one()
-  end
-
-  @doc """
-  One model turn that grows the whole note. Reads the selected source through
-  SourceReader (bounded), feeds the previous note as memory, and returns the
-  updated note. Any failure falls back to the deterministic template so the
-  pass keeps its progress guarantees.
-  """
-  def learn(repo, run, observation, model) do
-    with %{} = conn <- ModelGateway.connection(),
-         true <- conn.enabled and is_binary(conn.base_url),
-         model_id = model || conn.model,
-         true <- is_binary(model_id) and model_id != "",
-         {:ok, abs} <- SourceReader.resolve(repo.source_locator, observation.selected),
-         {:ok, file} <- study_material(abs) do
-      complete =
-        Application.get_env(:learning_agent, :note_complete, &OpenAICompatible.complete/1)
-
-      # Per-file cap: rate-limited providers need minutes of patience while
-      # the quota window frees; non-429 failures still fall back fast.
-      retry = [
-        max_attempts: min(ModelRetry.limit(), 30),
-        sleep: &ModelRetry.backoff/1
-      ]
-
-      prompt =
-        learn_prompt(repo, run, observation, file)
-        |> SourceReader.sanitize_utf8()
-        |> String.slice(0, @learn_max_prompt_bytes)
-
-      payload = %{
-        model: model_id,
-        messages: [
-          %{
-            role: :user,
-            content: [%{type: :text, text: prompt}]
-          }
-        ],
-        base_url: conn.base_url,
-        api_key: conn.api_key,
-        timeout_ms: conn.timeout_ms || 15_000,
-        # Bound the note generation: an open-ended reasoning model can spin for
-        # many minutes, blowing any client timeout and falling back to the
-        # template. A capped completion finishes well inside the window.
-        max_tokens: @learn_max_tokens
-      }
-
-      case ModelRetry.call(fn -> complete.(payload) end, retry) do
-        {:ok, %{text: text}} when is_binary(text) and byte_size(text) <= @learn_max_bytes ->
-          if Notes.Validator.validate(text) == :ok do
-            Activity.log(:info, "model note grown via `#{model_id}` for `#{repo.slug}`", %{
-              repo: repo.slug
-            })
-
-            {:ok, text}
-          else
-            Activity.log(
-              :warn,
-              "model note invalid (missing sections); using template for `#{repo.slug}`",
-              %{repo: repo.slug}
-            )
-
-            :fallback
-          end
-
-        {:error, reason} ->
-          Activity.log(
-            :warn,
-            "model call failed for `#{repo.slug}` (#{inspect(class_of(reason))}); using template",
-            %{
-              repo: repo.slug
-            }
-          )
-
-          :fallback
-      end
-    else
-      reason ->
-        Logger.warning(
-          "learning_learn_skipped repo=#{repo.slug} selected=#{inspect(observation.selected)} reason=#{inspect(reason)}"
-        )
-
-        :fallback
-    end
-  end
-
-  # A selected component is a directory: study its own files (bounded) instead
-  # of failing the read and faking coverage with a template note.
-  defp study_material(abs) do
-    if File.dir?(abs) do
-      component_material(abs)
-    else
-      SourceReader.read(abs, 1, @learn_read_lines, max_bytes: @learn_max_bytes)
-    end
-  end
-
-  defp component_material(dir) do
-    parts =
-      dir
-      |> component_files()
-      |> Enum.map(fn abs ->
-        rel = Path.relative_to(abs, dir)
-
-        case SourceReader.read(abs, 1, @component_file_lines, max_bytes: @component_file_bytes) do
-          {:ok, file} -> "## " <> rel <> "\n" <> file.content
-          _ -> nil
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-
-    if parts == [] do
-      {:error, {:read_error, :empty_component}}
-    else
-      {:ok, %{content: Enum.join(parts, "\n\n"), truncated: false}}
-    end
-  end
-
-  defp component_files(dir) do
-    dir
-    |> Path.join("**/*")
-    |> Path.wildcard()
-    |> Enum.filter(&File.regular?(&1))
-    |> Enum.sort_by(&File.stat!(&1).size, :desc)
-    |> Enum.take(@component_study_files)
-  end
-
-  defp architecture_line(%{architecture: nil}), do: ""
+  defp grounding_text(%{"summary" => summary}) when is_binary(summary), do: summary
+  defp grounding_text(_), do: ""
 
   defp architecture_line(%{architecture: text}) when is_binary(text),
-    do: "Codebase Memory architecture grounding:\n" <> text <> "\n\n"
+    do: "Codebase Memory architecture grounding:\n#{text}\n\n"
 
   defp architecture_line(_), do: ""
 
   defp component_line(%{component: component}) when is_binary(component),
-    do: " (component " <> component <> ")"
+    do: " (component #{component})"
 
   defp component_line(_), do: ""
 
-  defp learn_prompt(repo, run, observation, file) do
-    prior =
-      case observation.prior && observation.prior.note do
-        nil -> "(first pass - no prior note; start the memory)"
-        note -> String.slice(note, 0, @learn_prior_bytes)
-      end
-
-    """
-    You are the durable learner for repository `#{repo.slug}` (#{repo.source_locator}).
-    You maintain ONE growing note across passes. This is pass #{run.pass_number}; #{observation.prior.count} note(s) exist.
-    Hard rules:
-    - Keep exactly these five markdown sections: # architecture, # covered, # partial/uncited, # porter-questions, # selected-subsystem.
-    - # architecture ACCUMULATES durable structural facts across passes; never drop earlier facts unless this file corrects them.
-    - # covered lists already-studied items, one `- \`path\`` per line.
-    - # partial/uncited lists items not yet studied (one per line).
-    - # porter-questions holds concrete porting questions; answer what this file resolves, add what it raises.
-    - Only state what the provided source actually shows.
-
-    Depth requirements for this pass (the note must read like an engineer wrote it, not a file index):
-    - In # architecture, keep an accumulating component map: for the studied subsystem record what it does, why it exists, and who consumes it.
-    - For the studied file capture the W's: WHAT it does (responsibility), WHO uses it and WHAT it calls (imports, entry points), WHERE it sits in the data flow, WHEN it runs (lifecycle/trigger), and HOW it works (key functions, state, gotchas).
-    - # porter-questions must list the W's this pass answered and the concrete seams a port would reuse.
-
-    #{architecture_line(observation)}Memory from previous passes:
-    #{prior}
-
-    This pass studies \`#{observation.selected}\`#{component_line(observation)} (truncated: #{file.truncated}):
-    #{file.content}
-
-    Return the complete updated note with all five sections.
-    """
+  defp component_of(selected) when is_binary(selected) do
+    case String.split(selected, "/", parts: 2) do
+      [component, _] -> component <> "/"
+      _ -> nil
+    end
   end
 
-  defp ensure_covered(text, selected) when is_binary(selected) and selected != "" do
-    covered_block = covered_section(text)
+  defp component_of(_), do: nil
 
-    if covered_block && String.contains?(covered_block, "`" <> selected <> "`") do
-      text
-    else
-      String.replace(text, "# covered\n", "# covered\n- `" <> selected <> "`\n", global: false)
-    end
+  defp ensure_covered(text, selected) when is_binary(selected) do
+    if String.contains?(covered_section(text) || "", "`#{selected}`"),
+      do: text,
+      else: String.replace(text, "# covered\n", "# covered\n- `#{selected}`\n", global: false)
   end
 
   defp ensure_covered(text, _), do: text
@@ -626,138 +524,34 @@ defmodule LearningAgent.LearningPass do
     end
   end
 
-  defp synthesize(repo, run, observation, note) do
-    seam = repo.slug <> "-pass-" <> Integer.to_string(run.pass_number)
-    ref = Synthesizer.capsule_ref(seam)
+  defp maybe_requeue(repository, run) do
+    current = RepositoryContext.get(repository.id) || repository
+    remaining = uncovered_files(current, run.pin_id)
+    max = Application.get_env(:learning_agent, :max_auto_passes, 0)
 
-    capsule =
-      Capsule.new(%{
-        seam: seam,
-        question: "What did pass #{run.pass_number} observe in #{repo.slug}?",
-        source: repo.source_locator,
-        path_symbol: observation.selected,
-        signature: "learning-pass/#{run.pass_number}",
-        data_shape: "note + foundation leaf",
-        decisive_source: note.file_path || "unpublished",
-        flow: "observe -> note -> skill",
-        invariant: "Skills write only under the locked skills root.",
-        probe: "File.exists?(Path.join(skill_dir, \"SKILL.md\"))",
-        verdict: "Pass #{run.pass_number} published a note-first leaf for `#{repo.slug}`."
-      })
+    cond do
+      current.status == "disabled" ->
+        :ok
 
-    skill = """
-    ---
-    name: #{repo.slug}
-    description: #{skill_description(note, repo)}
-    ---
+      remaining == [] ->
+        RepositoryContext.set_status(current.id, "complete") && :ok
 
-    # #{repo.display_name} - what this codebase is and how it works
+      is_integer(max) and max > 0 and run.pass_number >= max ->
+        RepositoryContext.set_status(current.id, "complete") && :ok
 
-    #{skill_body(note, repo)}
-
-    ## Loader
-    #{Enum.join(Leaf.loader_lines([ref]), "\n")}
-
-    ## Capsule map
-    #{Enum.join(Leaf.map_lines([ref]), "\n")}
-    """
-
-    {:ok,
-     %{
-       "SKILL.md" => skill,
-       ref => Synthesizer.render_capsule(capsule)
-     }}
-  end
-
-  # The skill must carry the learned knowledge itself: the accumulated
-  # architecture (component map, W's) and the open porting questions - not a
-  # file index pointing at the note.
-  # The skill distills KNOWLEDGE, not one pass: it merges the architecture
-  # and porter content of the most recent learned notes so a SKILL.md stands
-  # as the repo's accumulated memory, not a single-file stub. Identical
-  # carry-forward fallbacks dedupe away.
-  defp skill_body(_note, repo) do
-    notes = recent_notes(repo, 8)
-    sections = Enum.map(notes, &skill_content(&1))
-    {archs, questions} = Enum.unzip(sections)
-
-    arch =
-      archs
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.uniq()
-      |> Enum.join("\n\n---\n\n")
-
-    qs =
-      questions
-      |> Enum.reject(&(&1 == ""))
-      |> Enum.uniq()
-      |> Enum.join("\n\n")
-
-    base =
-      if qs == "" do
-        arch
-      else
-        arch <> "\n\n## Open questions for a port\n\n" <> qs
-      end
-
-    String.trim_trailing(base)
-  end
-
-  defp recent_notes(repo, limit) do
-    from(n in LearningNote,
-      where: n.repository_id == ^repo.id and n.status == "published",
-      order_by: [desc: n.inserted_at],
-      limit: ^limit
-    )
-    |> Repo.all()
-    |> Enum.map(& &1.content)
-  end
-
-  defp skill_content(content) do
-    arch =
-      case LearningAgent.Domain.Squeeze.section(content, "architecture") do
-        body when is_binary(body) -> strip_architecture_headers(String.trim(body))
-        _ -> ""
-      end
-
-    {
-      arch,
-      question_section(content)
-    }
-  end
-
-  defp strip_architecture_headers(body) do
-    body
-    |> String.split("\n")
-    |> Enum.reject(
-      &(String.starts_with?(&1, "Repository \`") or
-          String.contains?(&1, "Codebase Memory project"))
-    )
-    |> Enum.join("\n")
-  end
-
-  defp question_section(content) do
-    case LearningAgent.Domain.Squeeze.section(content, "porter-questions") do
-      body when is_binary(body) -> String.trim(body)
-      _ -> ""
+      true ->
+        safe_pass_requeue(current.id)
     end
   end
 
-  defp skill_description(note, repo) do
-    case LearningAgent.Domain.Squeeze.section(note.content, "architecture") do
-      body when is_binary(body) ->
-        body
-        |> String.split("\n", trim: true)
-        |> Enum.reject(&String.contains?(&1, "Repository `"))
-        |> List.first("")
-        |> String.slice(0, 160)
-        |> case do
-          "" -> "Learning notes for " <> repo.display_name
-          line -> String.trim(line)
-        end
-
-      _ ->
-        "Learning notes for " <> repo.display_name
+  defp safe_pass_requeue(repository_id) do
+    try do
+      case RepositoryContext.queue_pass(repository_id) do
+        {:ok, _} -> :ok
+        {:error, _} -> :ok
+      end
+    rescue
+      Postgrex.Error -> :ok
     end
   end
 
@@ -765,9 +559,10 @@ defmodule LearningAgent.LearningPass do
     current = RunContext.get(run.id) || run
 
     if RunContext.cancelled?(current) do
-      RunContext.transition(run.id, from, "cancelled", run.lease_epoch, %{
-        finished_at: DateTime.utc_now()
-      })
+      _ =
+        RunContext.transition(run.id, from, "cancelled", run.lease_epoch, %{
+          finished_at: DateTime.utc_now()
+        })
 
       {:error, :cancelled}
     else
@@ -776,29 +571,13 @@ defmodule LearningAgent.LearningPass do
   end
 
   defp notes_root do
-    case Root.contain("_notes") do
-      {:ok, path} -> path
-      _ -> Path.join(System.tmp_dir!(), "learning-agent-notes")
-    end
+    Path.join(Root.path(), "_notes")
   end
 
   defp fail(run, reason) do
-    Logger.error("learning_pass_failed run=#{run.id} reason=#{inspect(reason)}")
-
-    Activity.log(
-      :error,
-      "pass failed `#{repo_slug_for(run)}` pass #{run.pass_number}: #{reason_text(reason)}",
-      %{
-        repo: repo_slug_for(run)
-      }
-    )
-
+    Logger.error("foundation_pass_failed run=#{run.id} reason=#{inspect(reason)}")
     current = RunContext.get(run.id) || run
-    from = current.state
-    epoch = current.lease_epoch || run.lease_epoch
-    class = failure_class(reason)
-
-    from_atom = String.to_existing_atom(to_string(from))
+    from_atom = String.to_existing_atom(to_string(current.state))
 
     to =
       cond do
@@ -807,29 +586,23 @@ defmodule LearningAgent.LearningPass do
         true -> nil
       end
 
-    if is_binary(to) do
+    if to do
       _ =
-        RunContext.transition(current.id, from, to, epoch, %{
-          finished_at: DateTime.utc_now(),
-          failure_class: class,
-          blocked_reason: reason_text(reason)
-        })
+        RunContext.transition(
+          current.id,
+          current.state,
+          to,
+          current.lease_epoch || run.lease_epoch,
+          %{
+            finished_at: DateTime.utc_now(),
+            failure_class: failure_class(reason),
+            blocked_reason: reason_text(reason)
+          }
+        )
     end
 
     release(current, "failed")
   end
-
-  defp failure_class(:not_writable), do: "not_writable"
-  defp failure_class(:eacces), do: "not_writable"
-
-  defp failure_class({:exception, msg}) when is_binary(msg) do
-    if String.contains?(msg, "permission denied"), do: "not_writable", else: "exception"
-  end
-
-  defp failure_class(_), do: "error"
-
-  defp reason_text(reason) when is_binary(reason), do: String.slice(reason, 0, 240)
-  defp reason_text(reason), do: reason |> inspect() |> String.slice(0, 240)
 
   defp release(run, outcome) do
     case LeaseContext.release_for(
@@ -838,105 +611,19 @@ defmodule LearningAgent.LearningPass do
            RunContext.holder(),
            outcome
          ) do
-      {:ok, _} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("lease_release_skipped run=#{run.id} reason=#{inspect(reason)}")
+      {:ok, _} -> :ok
+      _ -> :ok
     end
   end
 
-  defp enqueue_openviking(repo, run, note, dest) do
-    _ =
-      OutboxContext.append(%{
-        repository_id: repo.id,
-        run_id: run.id,
-        idempotency_key: "note:" <> to_string(note.id),
-        event_type: "add_learning_note",
-        destination: "learning/" <> repo.slug,
-        payload: %{"path" => note.file_path, "skill" => dest}
-      })
-
-    _ =
-      OutboxContext.append(%{
-        repository_id: repo.id,
-        run_id: run.id,
-        idempotency_key: "skill:" <> repo.slug <> ":" <> Integer.to_string(run.pass_number),
-        event_type: "add_capsule",
-        destination: "skills/" <> repo.slug,
-        payload: %{"path" => dest}
-      })
-
-    :ok
-  end
-
-  defp maybe_requeue(repo, run) do
-    current = RepositoryContext.get(repo.id) || repo
-    remaining = uncovered_files(current)
-    max = Application.get_env(:learning_agent, :max_auto_passes, 0)
-
-    cond do
-      current.status == "disabled" ->
-        :ok
-
-      remaining == [] ->
-        _ = RepositoryContext.set_status(current.id, "complete")
-        Logger.info("learning_repo_drained repo=#{current.slug} pass=#{run.pass_number}")
-
-        Activity.log(:ok, "repo squeezed `#{current.slug}` — nothing left to learn", %{
-          repo: current.slug
-        })
-
-        :ok
-
-      is_integer(max) and max > 0 and run.pass_number >= max ->
-        # The cap is a circuit breaker: settle the repo so self-heal stops
-        # requeueing it (an active repo without queued work would hot-loop).
-        _ = RepositoryContext.set_status(current.id, "complete")
-
-        Logger.info("learning_pass_cap repo=#{current.slug} pass=#{run.pass_number}")
-
-        Activity.log(
-          :info,
-          "pass cap reached \`#{current.slug}\` — settled to complete until an operator re-learns",
-          %{repo: current.slug}
-        )
-
-        :ok
-
-      true ->
-        case safe_pass_requeue(current.id) do
-          {:ok, next} ->
-            Logger.info(
-              "learning_pass_requeued repo=#{current.slug} pass=#{next.pass_number} remaining=#{length(remaining)}"
-            )
-
-            Activity.log(
-              :info,
-              "requeued `#{current.slug}` pass #{next.pass_number} · #{length(remaining)} source items left",
-              %{repo: current.slug}
-            )
-
-            :ok
-
-          {:error, reason} ->
-            Logger.warning("learning_pass_requeue_skipped reason=#{inspect(reason)}")
-        end
-    end
-  end
-
-  # A finishing pass raced another requeue on the same repo: the repository/pass
-  # unique index is the backstop, and losing the race must never fail the pass
-  # retroactively. Self-heal re-queues the repo anyway.
-  defp safe_pass_requeue(repo_id) do
-    try do
-      RepositoryContext.queue_pass(repo_id)
-    rescue
-      e in Postgrex.Error ->
-        msg = String.slice(Exception.message(e), 0, 160)
-
-        Logger.warning("learning_pass_requeue_race repo=#{repo_id} reason=#{msg}")
-        {:error, :pass_number_taken}
-    end
-  end
+  defp failure_class(:not_writable), do: "not_writable"
+  defp failure_class(:eacces), do: "not_writable"
+  defp failure_class(:artifact_conflict), do: "artifact_conflict"
+  defp failure_class(_), do: "error"
+  defp reason_text(reason), do: reason |> inspect() |> String.slice(0, 240)
+  defp model_tag(nil), do: ""
+  defp model_tag(model), do: " · model #{model}"
+  defp model_line(nil), do: ""
+  defp model_line(""), do: ""
+  defp model_line(model), do: "\nAssigned model `#{model}`."
 end

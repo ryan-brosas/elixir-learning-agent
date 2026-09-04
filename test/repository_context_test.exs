@@ -42,6 +42,25 @@ defmodule LearningAgent.RepositoryTest do
     assert repo2.status == "index_ready"
   end
 
+  test "a graph generation change creates a new immutable pin" do
+    {:ok, repo} = repo("generations")
+
+    attrs = %{
+      root: repo.source_locator,
+      branch: "main",
+      commit_sha: "abc123",
+      graph_generation: "generation-1"
+    }
+
+    assert {:ok, first_run} = RepositoryContext.queue_pass(repo.id, attrs)
+
+    assert {:ok, second_run} =
+             RepositoryContext.queue_pass(repo.id, %{attrs | graph_generation: "generation-2"})
+
+    refute second_run.pin_id == first_run.pin_id
+    assert Repo.aggregate(RepositoryPin, :count, :id) == 2
+  end
+
   defp repo(slug) do
     RepositoryContext.register(%{
       slug: slug,

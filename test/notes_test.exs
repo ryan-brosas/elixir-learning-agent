@@ -49,6 +49,23 @@ defmodule LearningAgent.NotesTest do
     File.rm_rf!(work)
   end
 
+  test "publish refuses to overwrite a conflicting materialized note" do
+    work =
+      Path.join(
+        System.tmp_dir!(),
+        "immutable_notes_" <> Integer.to_string(System.unique_integer([:positive]))
+      )
+
+    {_repo, run} = setup_run("n2c")
+    {:ok, note} = Notes.create(run.id, run.repository_id, note_body())
+    {:ok, published} = Notes.publish(note, work)
+    File.write!(published.file_path, "operator-owned replacement")
+
+    assert {:error, :conflict} = Notes.publish(note, work)
+    assert File.read!(published.file_path) == "operator-owned replacement"
+    File.rm_rf!(work)
+  end
+
   test "publish returns not_writable instead of raising" do
     work =
       Path.join(
@@ -71,6 +88,16 @@ defmodule LearningAgent.NotesTest do
     {:ok, second} = Notes.create(run.id, repo.id, note_body())
     assert second.id == first.id
     assert second.status == "draft"
+  end
+
+  test "required section names in prose do not satisfy the heading schema" do
+    {_repo, run} = setup_run("n3b")
+
+    prose =
+      "This mentions architecture, covered, partial/uncited, porter-questions, and selected-subsystem."
+
+    assert {:error, missing} = Notes.create(run.id, run.repository_id, prose)
+    assert Enum.sort(missing) == Enum.sort(LearningAgent.Notes.Validator.required_sections())
   end
 
   test "an invalid note (missing required section) is rejected before DB" do

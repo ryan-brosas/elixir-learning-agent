@@ -6,25 +6,25 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 
 - **Goal** — Study one pinned source repository at a time and turn source-confirmed reusable behavior into durable, validated learning artifacts without mutating the source repository.
 - **Status** — Implementation: deterministic runtime foundation complete; autonomous-learning product and container end-to-end acceptance remain partial.
-- **Milestone** — The repository has implemented durable domain state, SQL persistence, scheduling/recovery, Codebase Memory MCP framing, source/tool policy, note-first records, artifact validation/activation, an adapter-first bounded agent loop, an OpenViking outbox seam, an env-backed Plug operator API, and a browser model playground with a bounded OpenAI-compatible test path. Evidence: `docs/06-implementation-roadmap.md`; current verification is `129 passed` from `mix test`.
+- **Milestone** — The repository has implemented durable domain state, SQL persistence, scheduling/recovery, Codebase Memory MCP framing, source/tool policy, immutable pin-scoped pass observations, accepted stable seam capsules, complete `<slug>-foundation` projection and recovery, note-first work records, an adapter-first bounded agent loop, an OpenViking outbox seam, an env-backed Plug operator API, and a browser model playground. Evidence: `docs/10-event-sourced-foundations.md` and `docs/06-implementation-roadmap.md`; completion requires the current canonical gate rather than a historical test count.
 - **Next Milestone** — Complete the remaining deployment and product surfaces: live OpenViking transport, provider families/model routing, exhaustive multi-pass closure, container readiness proof, and the planned LiveView control plane. The current browser surface is a model dogfood probe, not the final dashboard. Evidence: `docs/06-implementation-roadmap.md` milestones 10, 11, 12, 13, and 15.
 
 ## Success Criteria
 
-1. **Deterministic safety core** — The test suite proves durable transitions, lease fencing, cancellation, note-first ordering, artifact parity, tool denial, MCP framing, and outbox retry behavior. Verified by `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix test`.
+1. **Deterministic safety core** — The test suite proves durable transitions, lease fencing, cancellation, immutable observation replay/conflict behavior, current-pin capsule projection, note-first work-record ordering, projection parity/recovery, tool denial, MCP framing, and outbox retry behavior. Verified by `mix format --check-formatted`, `mix compile --warnings-as-errors`, and `mix test`.
 2. **Runnable service boundary** — A production release assembles, the Compose topology validates, and the production image builds. Verified by `MIX_ENV=prod mix release --overwrite`, `docker compose config --quiet`, and `docker build --pull --tag learning-agent:ci .`; full Compose startup/readiness remains pending.
 3. **Honest learning closure** — A future complete run can only close from persisted evidence, coverage, adjudications, artifact parity, and retrieval verification; unknown, partial, stale, or blocked work remains non-complete. Evidence: `docs/01-domain-state-and-closure.md`, `docs/05-testing-and-verification.md`, and the domain tests.
 
 ## Target Users
 
 - **Primary:** Operators and maintainers who need repeatable, recoverable repository-learning passes and inspectable evidence.
-- **Secondary:** Agents and IDE workflows that consume canonical skills and need a durable context-production backend.
+- **Secondary:** Agents and IDE workflows that consume canonical foundation projections and need a durable context-production backend.
 - **Non-goals:** Generic coding-agent execution, arbitrary shell automation, source mutation, dependency installation into studied repositories, and a vector database as primary workflow state. Evidence: `DESIGN.md` sections 3, 5, and 15.
 
 ## Core Principles
 
 1. **Code and direct tests are authoritative** — Graphs and retrieval select where to look; source and tests decide what can be claimed. Evidence: `DESIGN.md` document control and `README.md`.
-2. **Durability before autonomy** — Intent is persisted before external side effects; note publication precedes artifact production; retries are classified. Evidence: `docs/03-storage-artifacts-and-openviking.md`, `lib/learning_agent/notes.ex`, and `lib/learning_agent/outbox_context.ex`.
+2. **Durability before autonomy** — Immutable observations and accepted capsules precede complete projection; a note-first work record preserves causal ordering; external intents are persisted before side effects and retries are classified. Evidence: `docs/10-event-sourced-foundations.md`, `lib/learning_agent/foundations.ex`, `lib/learning_agent/notes.ex`, and `lib/learning_agent/outbox_context.ex`.
 3. **Fail closed on uncertainty** — Missing coverage, unsafe tools, stale pins, budget exhaustion, and unresolved work block completion rather than becoming optimistic passes. Evidence: `docs/01-domain-state-and-closure.md`, `lib/learning_agent/tool_policy.ex`, and `lib/learning_agent/recovery.ex`.
 
 ## System Context
@@ -42,12 +42,12 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
   - Ecto repo and contexts — persistence, transitions, leases, notes, and outbox — `lib/learning_agent/repo.ex`, `lib/learning_agent/*_context.ex`, `priv/repo/migrations/`.
   - Scheduler/run workers — admission, one-pass execution, lease renewal, cancellation, recovery — `lib/learning_agent/scheduler.ex`, `run_supervisor.ex`, `run_worker.ex`, `lease_renewer.ex`, `recovery.ex`.
   - MCP/source/policy plane — Codebase Memory protocol, bounded source reads, registered tool firewall — `lib/learning_agent/mcp/`, `source_reader.ex`, `tool_registry.ex`, `tool_policy.ex`.
-  - Learning/artifact plane — note validation/publication, capsule rendering, generations, journals, parity — `learning_note.ex`, `notes/`, `skills/`, `artifacts/`.
+  - Foundation projection plane — immutable observations, accepted current-pin seam capsules, bounded prior context, complete projection rendering, note-first work records, generations, journals, and parity — `pass_observation.ex`, `foundation_capsule.ex`, `foundations.ex`, `foundations/`, `notes/`, `skills/`, `artifacts/`.
   - Provider/outbox plane — provider behavior and OpenAI-compatible adapter, publication intents, retry/drain — `provider.ex`, `providers/openai_compatible.ex`, `outbox.ex`, `outbox_context.ex`, `open_viking/`.
   - Operator boundary — Plug browser/model surface, JSON health, and env-backed role-gated routes — `lib/learning_agent_web/router.ex`, `lib/learning_agent_web/frontend.ex`, `lib/learning_agent/model_gateway.ex`.
 - **Composition roots:** `LearningAgent.Application.start/2`, Mix release declaration in `mix.exs:16-31`, `bin/server`, and Compose services in `docker-compose.yml`.
 - **Dependency rules:** Web calls contexts; contexts own durable decisions; adapters implement behaviors; model/provider/MCP/OpenViking adapters do not decide closure; workers do not execute arbitrary SQL; no source-writing or generic-shell tool exists. Evidence: `DESIGN.md` sections 17-18 and the policy/adapter modules.
-- **Key data structures or schemas:** repository/pin, run/transition, lease, learning note, inventory/claim/evidence, artifact set, and outbox event records, with migrations under `priv/repo/migrations/`.
+- **Key data structures or schemas:** repository/pin, run/transition, lease, immutable pass observation, accepted foundation capsule, learning-note work record, foundation projection artifact set, and outbox event records, with migrations under `priv/repo/migrations/`.
 
 ## Runtime Entrypoints
 
@@ -63,8 +63,8 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 
 - **Primary request flow:** HTTP request → Plug router → authentication/authorization → Ecto context → JSON response. Health routes are public; `/v1/*` is role-gated. Evidence: `lib/learning_agent_web/router.ex:13-80`.
 - **Run flow:** repository/run admission → scheduler claim → lease epoch → temporary run worker → durable transitions → lease release; recovery requeues or terminally resolves orphaned work. Evidence: `lib/learning_agent/scheduler.ex`, `run_context.ex`, `run_worker.ex`, `recovery.ex`.
-- **Learning flow:** graph/MCP preflight → bounded source/tool calls → note draft/materialization/read-back hash → capsule/artifact validation → generation activation → outbox intent → remote publication/verification. Evidence: `docs/02-...`, `docs/03-...`, `lib/learning_agent/notes.ex`, `artifacts/publisher.ex`, `open_viking/publisher.ex`.
-- **Write and read paths:** Ecto contexts write SQL records; note and artifact publishers write staged filesystem generations; outbox records external intents; publishers read claims and mark delivery/retry/permanent failure.
+- **Learning flow:** repository pin → bounded source/tool calls → immutable pass observation → zero or more accepted stable seam capsules → note-first work record → complete current-pin `<slug>-foundation` projection → outbox intent → remote publication/verification. Evidence: `docs/10-event-sourced-foundations.md`, `lib/learning_agent/foundations.ex`, `lib/learning_agent/notes.ex`, `artifacts/publisher.ex`, `open_viking/publisher.ex`.
+- **Write and read paths:** Ecto contexts insert durable observations/capsules and projection identities; note publication writes a causal work record; the projection publisher writes content-addressed complete generations; outbox records external intents; publishers read claims and mark delivery/retry/permanent failure.
 - **Background processing:** OTP scheduler and lease-renewer loops; DynamicSupervisor run children; startup recovery. Test configuration disables scheduler/renewer automatically to protect the Ecto Sandbox.
 - **Failure behavior:** invalid transitions and policy denials are returned as decisions; lease conflicts are fenced; transient provider/publication errors enter bounded retry states; permanent/unsupported events fail permanently; uncertain external results are recorded for reconciliation. Evidence: context tests and `docs/03`.
 
@@ -129,7 +129,8 @@ This is the verified deep-init record for the standalone Elixir Learning Agent. 
 ## Architectural Invariants
 
 - No external side effect precedes a durable intent and idempotency key.
-- No artifact is activated before note-first ordering, validation, and manifest verification.
+- No foundation projection is activated before immutable observation recording, note-first work-record ordering, foundation-only validation, and complete manifest verification.
+- Automatic execution never emits, activates, or promotes a procedure; that requires a separate future operator boundary.
 - No stale lease holder may commit a transition.
 - No source repository mutation, dependency installation, arbitrary shell, or delegated learning judgment is available through the runtime tool plane.
 - OpenViking degradation must be visible and must not erase locally complete learning.

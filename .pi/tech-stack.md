@@ -35,7 +35,7 @@ This is the detected stack for the checkout. Project dependencies are separated 
 
 - **Database:** PostgreSQL 16 — Evidence: `docker-compose.yml:2-14`, `docs/06-implementation-roadmap.md` milestone 2.
 - **ORM:** Ecto SQL/Postgrex — Evidence: `mix.exs:40-41`, `lib/learning_agent/repo.ex`.
-- **State Management:** Durable SQL contexts plus OTP supervision; no client state library — Evidence: `lib/learning_agent/*_context.ex`, `lib/learning_agent/application.ex`.
+- **State Management:** Durable SQL contexts plus OTP supervision; immutable `pass_observations` and accepted `foundation_capsules` are source facts, while active `<slug>-foundation` directories are rebuildable content-addressed projections — Evidence: `lib/learning_agent/foundations.ex`, `priv/repo/migrations/20260000000006_create_foundation_projection.exs`, `lib/learning_agent/application.ex`.
 - **API Style:** Plug JSON HTTP API with public health, browser HTML at `/`, viewer model catalog, operator model test, and role-gated `/v1/*` routes — Evidence: `lib/learning_agent_web/router.ex`.
 
 ## Commands
@@ -67,7 +67,7 @@ This is the detected stack for the checkout. Project dependencies are separated 
 
 ## Testing
 
-- **Unit / integration:** ExUnit, Ecto SQL Sandbox, real PostgreSQL integration, TCP MCP stubs, and Plug.Test — Evidence: `test/` and `test/test_helper.exs`.
+- **Unit / integration:** ExUnit, Ecto SQL Sandbox, real PostgreSQL integration, projection/recovery regressions, TCP MCP stubs, and Plug.Test — Evidence: `test/foundation_projection*_test.exs`, `test/foundations_context_test.exs`, and `test/test_helper.exs`.
 - **E2E:** No dedicated browser or full Compose E2E suite yet — Evidence: `docs/06` milestone 15 and `docs/07`.
 - **Coverage Target:** None configured; do not infer coverage from pass count.
 - **Coverage gaps:** Live external model/OpenViking transport, full container readiness, LiveView/browser flows, and fault-injection completeness remain open; the static browser/model probe has direct Plug/provider tests.

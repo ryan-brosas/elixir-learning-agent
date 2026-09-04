@@ -1,5 +1,7 @@
 # Implementation Roadmap and Decision Ledger
 
+> **Current architecture note:** the event-sourced foundation implementation supersedes the earlier proposed automatic note-to-generic-skill flow where this roadmap conflicts with current code. Automatic passes now record immutable pin-scoped observations, accept stable directly evidenced seam capsules, and activate a complete `<slug>-foundation` projection. Learning notes remain non-cumulative causal work records. Procedures require a separate future operator promotion boundary. See [`10-event-sourced-foundations.md`](10-event-sourced-foundations.md).
+
 ## 1. Delivery strategy
 
 Build the product in vertical correctness slices.

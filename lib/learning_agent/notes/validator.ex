@@ -18,11 +18,18 @@ defmodule LearningAgent.Notes.Validator do
 
   @doc "Validate a note body. Returns :ok | {:error, [missing_section]}."
   def validate(content) when is_binary(content) do
-    missing =
-      Enum.reject(@required_sections, fn section ->
-        String.contains?(String.downcase(content), section)
+    headings =
+      content
+      |> String.split("\n")
+      |> Enum.flat_map(fn line ->
+        case Regex.run(~r/^\#{1,6}\s+(.+?)\s*#*\s*$/, String.trim(line)) do
+          [_, heading] -> [String.downcase(heading)]
+          _ -> []
+        end
       end)
+      |> MapSet.new()
 
+    missing = Enum.reject(@required_sections, &MapSet.member?(headings, &1))
     if missing == [], do: :ok, else: {:error, missing}
   end
 end

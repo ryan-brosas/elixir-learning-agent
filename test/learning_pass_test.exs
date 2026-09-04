@@ -1,6 +1,6 @@
 defmodule LearningAgent.LearningPassTest do
   use LearningAgent.DataCase, async: false
-  alias LearningAgent.{LearningPass, RepositoryContext, RunContext}
+  alias LearningAgent.{Activity, LearningPass, RepositoryContext, RunContext}
 
   setup do
     work =
@@ -31,7 +31,7 @@ defmodule LearningAgent.LearningPassTest do
     %{src: src, skills: skills}
   end
 
-  test "a claimed run publishes a note then a skill under the locked root", %{
+  test "a claimed run records a work note then activates a foundation projection", %{
     src: src,
     skills: skills
   } do
@@ -52,10 +52,21 @@ defmodule LearningAgent.LearningPassTest do
     assert {:ok, result} = LearningPass.execute(claimed)
     assert result.run.state == "completed"
     assert File.exists?(result.note)
-    assert result.skill == Path.join(skills, "observed")
-    assert File.exists?(Path.join(result.skill, "SKILL.md"))
-    assert File.exists?(Path.join(result.skill, "references/observed-pass-1.md"))
+    assert result.foundation_projection == Path.join(skills, "observed-foundation")
+    assert File.exists?(Path.join(result.foundation_projection, "SKILL.md"))
+
+    assert length(Path.wildcard(Path.join([result.foundation_projection, "references", "*.md"]))) ==
+             1
+
+    refute File.read!(Path.join(result.foundation_projection, "SKILL.md")) =~ "kind: procedure"
     assert File.read!(result.note) =~ "selected-subsystem"
+
+    completed =
+      Activity.recent()
+      |> Enum.find(&(&1.message =~ "foundation pass completed `observed`"))
+
+    assert completed.meta.foundation_projection_id == result.foundation_projection_id
+    assert completed.meta.manifest_digest == result.manifest_digest
   end
 
   test "keeps queueing passes until unread source files are gone", %{src: src} do

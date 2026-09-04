@@ -384,30 +384,38 @@ Constraints:
 
 - Unique run and turn number.
 
+### `pass_observations`
+
+Purpose: immutable, bounded facts from one pass at one repository pin.
+
+Fields bind repository, run, pass, pin, source paths, direct evidence, model identity, coverage, unresolved items, omissions, and observation time. Run identity is unique. The application context permits idempotent replay but no mutation.
+
+### `foundation_capsules`
+
+Purpose: immutable accepted seam facts for one repository pin.
+
+Each row has a stable seam key, direct source excerpt/digest/revision, test evidence or an explicit caveat, question, boundary, invariant, and limits. Repository + pin + stable key is unique; different content at that identity is a conflict.
+
 ### `artifact_sets`
 
-Purpose: complete proposed skill generations.
+Purpose: complete foundation projection generations.
 
 Fields:
 
 - `id uuid primary key`.
 - `repository_id uuid not null`.
-- `run_id uuid not null unique`.
-- `learning_note_id uuid not null`.
+- `pin_id uuid not null`.
+- `run_id uuid not null` (the run that first materialized this generation).
+- `learning_note_id uuid not null` (causal work-record compatibility link).
 - `generation integer not null`.
 - `manifest_digest text not null`.
 - `state text not null`.
-- `staging_path text not null`.
+- `staging_path text`.
 - `active_path text`.
-- `template_version text not null`.
-- `validated_at timestamp`.
-- `activated_at timestamp`.
+- `producer text not null`.
+- `projection_version integer not null`.
 
-Constraints:
-
-- Unique repository and generation.
-- Unique manifest digest per repository.
-- Learning note foreign key is not nullable.
+A generation is a derived view. Its source of truth is the current-pin accepted capsule set, not the preceding learning-note body.
 
 ### `artifacts`
 
@@ -656,11 +664,13 @@ Proposed state volume layout:
 └── blobs/sha256/<prefix>/<digest>
 ```
 
-Proposed skill volume target:
+Foundation projection target:
 
 ```text
-/agents/skills/<leaf>/
+/agents/skills/<slug>-foundation/
 ```
+
+Content-addressed generations and journals live under `/agents/skills/.learning-agent/`. The active foundation path is an atomic link to one complete generation.
 
 Repository source volume:
 
@@ -708,7 +718,7 @@ Before activation, validate:
 
 Write immutable generations outside the catalog path.
 
-Point `/agents/skills/<leaf>` to the active generation.
+Point `/agents/skills/<slug>-foundation` to the active complete generation.
 
 Activate with atomic symlink rename.
 
@@ -887,10 +897,10 @@ The target naming convention matches the existing workflow.
 
 ## 16. Outbox event types
 
-- `openviking.add_learning_note`.
+- `openviking.add_learning_note` (work-record publication).
 - `openviking.add_verification_record`.
-- `openviking.add_capsule`.
-- `openviking.add_skill_leaf`.
+- `openviking.add_capsule` (immutable accepted seam publication).
+- `openviking.materialize_foundation` (complete projection publication).
 - `openviking.verify_symbol`.
 
 Each event has a deterministic idempotency key.

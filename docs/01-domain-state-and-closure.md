@@ -60,19 +60,25 @@ A claim has one or more source anchors.
 
 A claim has an evidence classification.
 
-### Learning note
+### Pass observation
 
-A durable pre-production record of the current mental model.
+An immutable, bounded record of what one pass observed at one repository pin.
 
-A note captures architecture, selected subsystem, candidates, caveats, and questions.
+It binds repository/run/pass/pin identity, source paths, direct evidence, model identity, coverage, unresolved items, and omissions. Later passes consume a bounded projection of these facts, never complete recent note bodies.
 
-### Capsule
+### Learning note work record
 
-A canonical capsule-v2 Markdown reference for one seam.
+A durable note-first publication record used for causal ordering and crash recovery.
 
-### Foundation leaf
+It is not cumulative repository memory and its full body is not fed into later passes.
 
-A canonical `SKILL.md` loader and capsule map.
+### Foundation capsule
+
+An immutable accepted seam record for one pin, rendered as a canonical capsule-v2 Markdown reference. Its deterministic identity comes from the seam boundary, not the pass number.
+
+### Foundation projection
+
+The complete `<slug>-foundation` loader, capsule map, and references derived from all accepted capsules at exactly one repository pin.
 
 ### Evidence
 

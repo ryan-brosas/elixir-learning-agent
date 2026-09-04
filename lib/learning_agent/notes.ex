@@ -1,11 +1,12 @@
 defmodule LearningAgent.Notes do
   @moduledoc """
-  Note-first work records (docs/01 §13, docs/05 §16, docs/06 Milestone 6).
+  Note-first causal work records (docs/01 §13, docs/05 §16, docs/10).
 
   Sequence: validate required sections -> insert canonical SQL note -> materialize
   the Markdown file (temp + atomic rename) -> read back + hash it -> mark the note
   published with file_path/file_digest. publish/2 converges a partial state to one
-  canonical published note or an explicit conflict.
+  canonical published note or an explicit conflict. These note bodies are not
+  cumulative repository memory and are never the prior-context source.
   """
   alias LearningAgent.{Repo, LearningNote}
   alias LearningAgent.Notes.Validator
@@ -75,6 +76,7 @@ defmodule LearningAgent.Notes do
     temp = target <> ".tmp"
 
     with :ok <- mkdir(Path.dirname(target)),
+         :ok <- preserve_existing(target, note.content_digest),
          :ok <- write(temp, note.content),
          :ok <- rename(temp, target),
          {:ok, readback} <- File.read(target) do
@@ -100,6 +102,19 @@ defmodule LearningAgent.Notes do
     case File.mkdir_p(path) do
       :ok -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp preserve_existing(path, expected_digest) do
+    case File.read(path) do
+      {:ok, content} ->
+        if digest(content) == expected_digest, do: :ok, else: {:error, :conflict}
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

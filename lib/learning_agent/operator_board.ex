@@ -1,5 +1,5 @@
 defmodule LearningAgent.OperatorBoard do
-  @moduledoc "Read-only operator snapshot for the learning control-plane UI."
+  @moduledoc "Read-only operator view of runs and active foundation projections."
 
   import Ecto.Query
   alias LearningAgent.{Repo, Run, OutboxContext, ModelGateway, RepositoryContext}
@@ -45,7 +45,8 @@ defmodule LearningAgent.OperatorBoard do
       status: r.status,
       graph_project: r.graph_project,
       source_locator: r.source_locator,
-      next_pass_number: r.next_pass_number
+      next_pass_number: r.next_pass_number,
+      active_foundation_projection_id: r.active_generation_id
     }
   end
 
@@ -63,6 +64,7 @@ defmodule LearningAgent.OperatorBoard do
       failure_class: run.failure_class,
       cancel_requested: run.cancel_requested,
       current_gate: run.current_gate,
+      foundation_projection_id: run.artifact_set_id,
       inserted_at: run.inserted_at,
       finished_at: run.finished_at
     }

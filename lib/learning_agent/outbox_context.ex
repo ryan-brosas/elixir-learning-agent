@@ -14,6 +14,13 @@ defmodule LearningAgent.OutboxContext do
     |> Repo.insert()
   end
 
+  @doc "Insert an outbox event without duplicating an existing idempotency key."
+  def append_idempotent(attrs) do
+    %OutboxEvent{}
+    |> OutboxEvent.changeset(attrs)
+    |> Repo.insert(on_conflict: :nothing, conflict_target: :idempotency_key)
+  end
+
   @doc "Count pending+retry events (backlog)."
   def backlog do
     Repo.aggregate(

@@ -33,5 +33,6 @@ defmodule LearningAgent.RepositoryPin do
       :observed_at
     ])
     |> validate_required([:repository_id, :root])
+    |> unique_constraint(:repository_id, name: :repository_pins_identity_index)
   end
 end

@@ -39,16 +39,15 @@ defmodule LearningAgent.RepositoryContext do
     Repo.transaction(fn ->
       repo = Repo.get(Repository, id) || Repo.rollback(:not_found)
 
-      pin =
-        case latest_pin(repo.id) do
-          %RepositoryPin{} = existing -> existing
-          nil -> create_pin!(repo, pin_attrs)
-        end
+      pin = select_pin!(repo, pin_attrs)
 
       case LearningAgent.RunContext.create(repo.id, pin.id, repo.next_pass_number) do
         {:ok, run} ->
           repo
-          |> Ecto.Changeset.change(next_pass_number: repo.next_pass_number + 1)
+          |> Ecto.Changeset.change(
+            next_pass_number: repo.next_pass_number + 1,
+            active_pin_id: pin.id
+          )
           |> Repo.update!()
 
           run
@@ -70,13 +69,53 @@ defmodule LearningAgent.RepositoryContext do
     |> Repo.one()
   end
 
-  defp create_pin!(repo, pin_attrs) do
-    attrs = %{
+  defp select_pin!(repo, pin_attrs) do
+    if requested_pin?(pin_attrs) do
+      attrs = normalized_pin(repo, pin_attrs)
+
+      find_pin(repo.id, attrs) || create_pin!(repo, attrs)
+    else
+      latest_pin(repo.id) || create_pin!(repo, normalized_pin(repo, %{}))
+    end
+  end
+
+  defp find_pin(repository_id, attrs) do
+    import Ecto.Query
+
+    query =
+      from(pin in RepositoryPin,
+        where:
+          pin.repository_id == ^repository_id and pin.root == ^attrs.root and
+            pin.branch == ^attrs.branch and pin.commit_sha == ^attrs.commit_sha
+      )
+
+    query =
+      if is_nil(attrs.graph_generation),
+        do: where(query, [pin], is_nil(pin.graph_generation)),
+        else: where(query, [pin], pin.graph_generation == ^attrs.graph_generation)
+
+    Repo.one(query)
+  end
+
+  defp requested_pin?(attrs) when is_map(attrs) do
+    Enum.any?([:root, :branch, :commit_sha, :graph_generation], fn key ->
+      value = Map.get(attrs, key)
+      not is_nil(value) and value != ""
+    end)
+  end
+
+  defp requested_pin?(_), do: false
+
+  defp normalized_pin(repo, pin_attrs) do
+    %{
       root: Map.get(pin_attrs, :root) || repo.source_locator || repo.canonical_root,
       branch: Map.get(pin_attrs, :branch) || "main",
-      commit_sha: Map.get(pin_attrs, :commit_sha) || "unpinned"
+      commit_sha: Map.get(pin_attrs, :commit_sha) || "unpinned",
+      graph_generation: Map.get(pin_attrs, :graph_generation)
     }
+  end
 
+  defp create_pin!(repo, attrs) do
     case add_pin(repo.id, attrs) do
       {:ok, pin} -> pin
       {:error, changeset} -> Repo.rollback({:invalid, changeset})

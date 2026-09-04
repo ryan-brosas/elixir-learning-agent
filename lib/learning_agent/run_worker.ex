@@ -1,8 +1,9 @@
 defmodule LearningAgent.RunWorker do
   @moduledoc """
   One repository pass worker. Temporary child of RunSupervisor; SQL remains the
-  source of truth. Each claimed run executes LearningPass: observe, note, skill
-  under `.agents/skills/`, then release the lease.
+  source of truth. Each claimed run records a pin-scoped observation, accepts any
+  directly evidenced seam capsule, activates the complete foundation projection,
+  then releases the lease. It has no procedure-promotion capability.
   """
   use GenServer
   require Logger

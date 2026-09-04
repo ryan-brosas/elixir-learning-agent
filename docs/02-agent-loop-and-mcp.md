@@ -626,11 +626,11 @@ Creates the durable note before production.
 
 The runtime validates required sections.
 
-### `inventory.propose_candidate`
+### `foundations.propose_seam`
 
-Adds or updates a seam candidate.
+Proposes a stable seam candidate for the active repository pin.
 
-The runtime rejects cross-repository references.
+The runtime rejects cross-repository and cross-pin references.
 
 ### `evidence.bind_claim`
 
@@ -638,17 +638,17 @@ Links evidence to a proposed claim.
 
 The runtime validates evidence authority classes.
 
-### `artifacts.propose_capsule`
+### `foundations.propose_capsule`
 
-Stages one capsule proposal.
+Proposes one directly evidenced foundation capsule.
 
-Allowed only after note publication.
+Allowed only at the synthesis gate. Acceptance remains a deterministic context decision.
 
-### `artifacts.propose_leaf`
+### `foundations.propose_projection`
 
-Stages a complete leaf projection.
+Proposes the complete current-pin `<slug>-foundation` projection.
 
-Allowed only after at least one capsule proposal or closure result.
+A zero-capsule or unchanged projection is valid. The automatic tool plane has no procedure-emission or promotion operation.
 
 ### `run.record_blocker`
 
