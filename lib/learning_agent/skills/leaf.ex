@@ -1,7 +1,7 @@
 defmodule LearningAgent.Skills.Leaf do
   @moduledoc """
-  Foundation leaf + loader/map/disk parity (foundation-skill.md, docs/05 §18).
-  A leaf is valid only when loader, capsule map, and on-disk refs agree.
+  Complete foundation-projection loader/map/disk parity (docs/05 §18, docs/10).
+  A projection is valid only when loader, capsule map, and on-disk refs agree.
   """
 
   @doc "Build the loader reference lines for a set of capsule refs."

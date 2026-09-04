@@ -1,6 +1,15 @@
 defmodule LearningAgent.LearningPassTest do
   use LearningAgent.DataCase, async: false
-  alias LearningAgent.{LearningPass, RepositoryContext, RunContext}
+
+  alias LearningAgent.{
+    Activity,
+    FoundationCapsule,
+    LearningPass,
+    PassObservation,
+    Repo,
+    RepositoryContext,
+    RunContext
+  }
 
   setup do
     work =
@@ -31,7 +40,7 @@ defmodule LearningAgent.LearningPassTest do
     %{src: src, skills: skills}
   end
 
-  test "a claimed run publishes a note then a skill under the locked root", %{
+  test "a claimed run records a work note then activates a foundation projection", %{
     src: src,
     skills: skills
   } do
@@ -52,10 +61,44 @@ defmodule LearningAgent.LearningPassTest do
     assert {:ok, result} = LearningPass.execute(claimed)
     assert result.run.state == "completed"
     assert File.exists?(result.note)
-    assert result.skill == Path.join(skills, "observed")
-    assert File.exists?(Path.join(result.skill, "SKILL.md"))
-    assert File.exists?(Path.join(result.skill, "references/observed-pass-1.md"))
+    assert result.foundation_projection == Path.join(skills, "observed-foundation")
+    assert File.exists?(Path.join(result.foundation_projection, "SKILL.md"))
+
+    assert length(Path.wildcard(Path.join([result.foundation_projection, "references", "*.md"]))) ==
+             1
+
+    refute File.read!(Path.join(result.foundation_projection, "SKILL.md")) =~ "kind: procedure"
     assert File.read!(result.note) =~ "selected-subsystem"
+
+    completed =
+      Activity.recent()
+      |> Enum.find(&(&1.message =~ "foundation pass completed `observed`"))
+
+    assert completed.meta.foundation_projection_id == result.foundation_projection_id
+    assert completed.meta.manifest_digest == result.manifest_digest
+  end
+
+  test "a note publication conflict leaves no accepted capsules", %{src: src, skills: skills} do
+    {:ok, repo} =
+      RepositoryContext.register(%{
+        slug: "note-conflict",
+        display_name: "Note Conflict",
+        graph_project: "note-conflict",
+        source_locator: src
+      })
+
+    {:ok, run} =
+      RepositoryContext.queue_pass(repo.id, %{root: src, branch: "main", commit_sha: "abc"})
+
+    {:ok, claimed, _lease} = RunContext.claim(run)
+    compact_id = String.replace(run.id, "-", "")
+    note_path = Path.join([skills, "_notes", compact_id, "note-#{compact_id}.md"])
+    File.mkdir_p!(Path.dirname(note_path))
+    File.write!(note_path, "conflicting operator content")
+
+    assert {:error, :conflict} = LearningPass.execute(claimed)
+    assert Repo.aggregate(PassObservation, :count, :id) == 1
+    assert Repo.aggregate(FoundationCapsule, :count, :id) == 0
   end
 
   test "keeps queueing passes until unread source files are gone", %{src: src} do

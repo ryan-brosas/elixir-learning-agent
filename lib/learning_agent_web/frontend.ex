@@ -374,7 +374,7 @@ defmodule LearningAgentWeb.Frontend do
       <script>
         const SETTINGS_KEY = "learning-agent.model-connection.v1";
         const VIEWS = {
-          overview: ["Overview", "Start learning once. Workers drain every Codebase Memory graph; notes and skills land on disk, OpenViking gets the copy."],
+          overview: ["Overview", "Start learning once. Workers drain every Codebase Memory graph; immutable observations become complete foundation projections, and OpenViking gets the published copy."],
           graphs: ["Graphs", "One Start queues every graph. Workers learn them in parallel up to the slot limit."],
           runs: ["Runs", "Inspect durable run state, cancel in-flight work, or return a blocked run to the queue."],
           activity: ["Activity", "Live feed: what the scheduler and every worker are doing right now."],

@@ -299,8 +299,17 @@ defmodule LearningAgentWeb.RouterTest do
 
       assert response.status == 200
       assert body["repository_count"] >= 1
-      assert Enum.any?(body["repositories"], &(&1["slug"] == "learn1"))
-      assert Enum.any?(body["runs"], &(&1["id"] == run.id))
+
+      assert Enum.any?(body["repositories"], fn repository ->
+               repository["slug"] == "learn1" and
+                 Map.has_key?(repository, "active_foundation_projection_id")
+             end)
+
+      assert Enum.any?(body["runs"], fn surfaced_run ->
+               surfaced_run["id"] == run.id and
+                 Map.has_key?(surfaced_run, "foundation_projection_id")
+             end)
+
       assert body["run_counts"]["queued"] >= 1
     end)
   end

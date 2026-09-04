@@ -1,37 +1,52 @@
 defmodule LearningAgent.Skills.Synthesizer do
-  @moduledoc """
-  Render capsule-v2 and foundation-leaf Markdown (docs/06 M7). Output follows the
-  canonical templates (foundation-capsule.md / foundation-skill.md); synthesis is
-  deterministic and validation is a separate step the model cannot bypass.
-  """
+  @moduledoc "Deterministic renderer for direct-evidence foundation capsules."
   alias LearningAgent.Skills.Capsule
 
-  @doc "Render one capsule-v2 document."
-  def render_capsule(%Capsule{} = c) do
+  def render_capsule(%Capsule{} = capsule) do
+    case Capsule.validate(capsule) do
+      :ok -> render_valid(capsule)
+      {:error, reason} -> raise ArgumentError, "invalid foundation capsule: #{inspect(reason)}"
+    end
+  end
+
+  def render_capsule!(capsule), do: render_capsule(capsule)
+
+  defp render_valid(capsule) do
+    test_binding =
+      if present?(capsule.test_evidence) do
+        "**Test evidence:** #{capsule.test_evidence}."
+      else
+        "**Test caveat:** #{capsule.test_caveat}."
+      end
+
     """
     <!-- capsule-v2 -->
-    # #{c.seam} — #{c.question}
+    <!-- producer: elixir-learning-agent -->
+    # #{capsule.seam} — #{capsule.question}
 
-    **Source:** #{c.source}. **Question:** #{c.question}
+    **Source:** #{capsule.source}.
+    **Path/Symbol:** #{capsule.path_symbol}.
+    **Source revision:** `#{capsule.source_revision}`.
+    **Source digest:** `#{capsule.source_digest}`.
 
-    **Path/Symbol:** #{c.path_symbol}.
-    **Signature:** #{c.signature}.
-    **Data Shape:** #{c.data_shape}.
-
-    ### Decisive source
+    ### Direct source excerpt
     ```text
-    #{c.decisive_source}
+    #{capsule.direct_source_excerpt}
     ```
 
-    **Flow:** #{c.flow}.
-    **Invariant:** #{c.invariant}.
-    **Probe:** #{c.probe}.
+    #{test_binding}
+
+    **Question:** #{capsule.question}
+    **Boundary:** #{capsule.boundary}
+    **Invariant:** #{capsule.invariant}
+    **Limits:** #{capsule.limits}
 
     ## Verdict
-    #{c.verdict}
+    #{capsule.verdict}
     """
   end
 
-  @doc "A capsule is stored at references/<seam>.md."
   def capsule_ref(seam), do: "references/" <> seam <> ".md"
+
+  defp present?(value), do: is_binary(value) and String.trim(value) != ""
 end

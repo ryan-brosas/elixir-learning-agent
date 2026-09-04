@@ -1,5 +1,6 @@
 defmodule LearningAgent.Skills.RootTest do
   use ExUnit.Case, async: false
+  alias LearningAgent.{Foundations.Projection, Repository}
   alias LearningAgent.Skills.{Root, Store}
 
   setup do
@@ -53,23 +54,14 @@ defmodule LearningAgent.Skills.RootTest do
     assert String.starts_with?(dest, root)
   end
 
-  test "store writes a leaf only under the skills root", %{root: root} do
-    skill = """
-    ## Loader
-    - `references/demo.md` — a porting question.
+  test "store delegates a foundation leaf to the recoverable publisher", %{root: root} do
+    repository = %Repository{slug: "demo", display_name: "Demo"}
+    assert {:ok, files} = Projection.files(repository, [])
+    assert {:ok, dest} = Store.write_leaf("demo", files)
 
-    ## Capsule map
-    - **Capability** — `references/demo.md`: reusable contract.
-    """
-
-    assert {:ok, dest} =
-             Store.write_leaf("demo", %{
-               "SKILL.md" => skill,
-               "references/demo.md" => "capsule"
-             })
-
-    assert dest == Path.join(root, "demo")
+    assert dest == Path.join(root, "demo-foundation")
     assert File.exists?(Path.join(dest, "SKILL.md"))
-    refute File.exists?(Path.join(Path.dirname(root), "demo"))
+    assert File.exists?(Path.join(dest, ".learning-agent-foundation.json"))
+    refute File.exists?(Path.join(Path.dirname(root), "demo-foundation"))
   end
 end

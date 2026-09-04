@@ -8,12 +8,15 @@ defmodule LearningAgent.SkillsTest do
       source: "requests (Apache) at main@abc; CBM requests",
       question: "How does the adapter dedupe concurrent identical calls?",
       path_symbol: "src/requests/adapters.py:RequestAdapter",
-      signature: "def _perform(req)",
-      data_shape: "{req, hook}; returns response or raises",
-      decisive_source: "class adapter... def _perform(req)",
-      flow: "dedupe -> release",
+      direct_source_excerpt: "class adapter... def _perform(req)",
+      source_digest:
+        :crypto.hash(:sha256, "class adapter... def _perform(req)")
+        |> Base.encode16(case: :lower),
+      source_revision: "abc",
+      test_evidence: "test/adapters_test.py::test_singleflight",
+      boundary: "request adapter",
       invariant: "never two concurrent sends",
-      probe: "test/adapters_test.py::test_singleflight",
+      limits: "transport-specific",
       verdict: "adopt singleflight; adapt host transport"
     })
   end
@@ -26,6 +29,11 @@ defmodule LearningAgent.SkillsTest do
     c = capsule()
     assert {:error, missing} = Capsule.validate(%{c | invariant: nil})
     assert :invariant in missing
+  end
+
+  test "validate rejects a digest that does not bind the direct excerpt" do
+    assert {:error, [:source_digest]} =
+             capsule() |> Map.put(:source_digest, String.duplicate("0", 64)) |> Capsule.validate()
   end
 
   test "synthesizer renders a capsule with the canonical header and verdict" do

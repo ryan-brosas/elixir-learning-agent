@@ -6,17 +6,19 @@ defmodule LearningAgent.Recovery do
   Also releases any lease still marking a vanished holder.
   """
   require Logger
-  alias LearningAgent.RunContext
+  alias LearningAgent.{Foundations, RunContext}
 
   def run do
-    case RunContext.orphaned() do
-      [] ->
-        :ok
+    with :ok <- Foundations.recover_artifacts() do
+      case RunContext.orphaned() do
+        [] ->
+          :ok
 
-      runs ->
-        Enum.each(runs, &reconcile/1)
-        Logger.info("recovery_complete orphans=#{length(runs)}")
-        :ok
+        runs ->
+          Enum.each(runs, &reconcile/1)
+          Logger.info("recovery_complete orphans=#{length(runs)}")
+          :ok
+      end
     end
   end
 

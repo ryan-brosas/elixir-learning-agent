@@ -22,6 +22,8 @@ defmodule LearningAgent.Run do
     field(:lease_epoch, :integer)
     field(:current_gate, :string)
     field(:selected_subsystem_id, :binary_id)
+    field(:learning_note_id, :binary_id)
+    field(:artifact_set_id, :binary_id)
     field(:cancel_requested, :boolean, default: false)
     field(:cancel_requested_at, :utc_datetime_usec)
     field(:started_at, :utc_datetime_usec)
@@ -44,6 +46,8 @@ defmodule LearningAgent.Run do
           :lease_epoch,
           :current_gate,
           :selected_subsystem_id,
+          :learning_note_id,
+          :artifact_set_id,
           :cancel_requested,
           :cancel_requested_at,
           :started_at,

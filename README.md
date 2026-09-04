@@ -4,7 +4,7 @@
 
 **A durable, evidence-backed repository-learning runtime built as an OTP application.**
 
-It studies one pinned repository at a time, preserves learning notes and artifacts, and keeps safety, recovery, and honest completion at the center.
+It studies one pinned repository at a time, records immutable observations and accepted seam capsules, and projects a complete evidence-backed foundation.
 
 [![Project quality](https://github.com/ryan-brosas/elixir-learning-agent/actions/workflows/pr-quality.yml/badge.svg?branch=main)](https://github.com/ryan-brosas/elixir-learning-agent/actions/workflows/pr-quality.yml)
 [![Elixir](https://img.shields.io/badge/Elixir-1.20-4B275F?logo=elixir)](https://elixir-lang.org/)
@@ -51,13 +51,15 @@ Repository-learning automation needs more than retrieval. It needs durable run s
 
 The current implementation already provides the deterministic core:
 
-- PostgreSQL/Ecto persistence for repositories, runs, leases, notes, artifacts, and an outbox.
+- PostgreSQL/Ecto persistence for repository pins, runs, immutable pass observations, accepted foundation capsules, projections, work records, and an outbox.
 - Scheduler, supervised run workers, lease renewal, cancellation, and startup recovery.
 - A framed Codebase Memory MCP client with request correlation and typed operations.
 - Bounded source reads and a registered-tool firewall with no generic shell or source-write operation.
-- Note-first Markdown publication with read-back hashing.
-- Capsule-v2 rendering and loader/map/disk parity checks.
-- Recoverable artifact generations and an OpenViking publication outbox seam.
+- Note-first work-record publication with read-back hashing; full note bodies never become later-pass context.
+- Bounded current-pin context from accepted seams, coverage, unresolved items, and omissions.
+- Complete `<slug>-foundation` projections with YAML-safe manual/model-disabled frontmatter and loader/map/disk parity.
+- Content-addressed, recoverable projection generations and an OpenViking publication outbox seam.
+- A hard automatic-generation boundary: no procedure emission, activation, or promotion.
 - Role-gated JSON health and operator endpoints plus telemetry formatting.
 - A responsive browser model playground at `/` with non-secret model status and an operator-only completion probe.
 - A bounded OpenAI-compatible provider adapter with normalized responses and injectable test transport.
@@ -76,7 +78,7 @@ Plug operator API ──► durable Ecto contexts ──► PostgreSQL
                               │                                  │
                               │                                  ├── lease + recovery
                               │                                  ├── MCP / source / tool policy
-                              │                                  └── notes / skills / artifacts
+                              │                                  └── observations / capsules / projections
                               │
                               └── Outbox ──► OpenViking client boundary
 ```
@@ -145,6 +147,7 @@ Bearer-token role configuration is environment-driven through `LA_VIEWER_TOKEN`,
 - [`docs/06-implementation-roadmap.md`](docs/06-implementation-roadmap.md) — delivery status and next milestones.
 - [`docs/07-frontend-control-plane.md`](docs/07-frontend-control-plane.md) — browser dogfood surface and planned LiveView control plane.
 - [`docs/08-model-routing-workers-and-scaling.md`](docs/08-model-routing-workers-and-scaling.md) — provider and capacity design.
+- [`docs/10-event-sourced-foundations.md`](docs/10-event-sourced-foundations.md) — immutable observations, stable capsules, complete projection, and the procedure-promotion boundary.
 - [`.pi/project.md`](.pi/project.md) — deep verified project context for agents.
 - [`.pi/tech-stack.md`](.pi/tech-stack.md) — commands, versions, integrations, and constraints.
 - [`AGENTS.md`](AGENTS.md) — short operating spine and canonical completion command.

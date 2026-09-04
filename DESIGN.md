@@ -4,15 +4,15 @@
 
 - Project: Elixir Learning Agent.
 - Document type: implementation-ready architecture plan.
-- Status: proposed.
-- Runtime implementation: not started.
+- Status: implemented foundation with planned follow-on surfaces.
+- Runtime implementation: event-sourced foundation projection is implemented; see `docs/10-event-sourced-foundations.md`.
 - Product category: autonomous evidence-backed repository learner.
 - Primary language: Elixir.
 - Runtime model: OTP application.
 - Deployment model: containerized service.
 - Primary truth: source code and direct tests.
 - Navigation surface: Codebase Memory MCP.
-- Reusable output: `.agents/skills/<leaf>/`.
+- Reusable output: `.agents/skills/<slug>-foundation/`.
 - Semantic publication: OpenViking.
 - Explicit non-category: retrieval-augmented generation application.
 
@@ -38,7 +38,7 @@ It must preserve evidence.
 
 It must recover from crashes.
 
-It must publish canonical skills.
+It must publish canonical foundation projections.
 
 It must synchronize learning into OpenViking.
 
@@ -72,15 +72,15 @@ Every reusable claim records a direct test or test caveat.
 
 Every reusable claim records a deterministic probe.
 
-### G-003 Durable skill production
+### G-003 Durable foundation projection
 
-Every pass writes a learning note first.
+Every pass records an immutable, pin-scoped observation and writes a note-first work record.
 
-Every capsule follows capsule-v2.
+Every accepted capsule follows capsule-v2 and binds direct source evidence.
 
-Every leaf follows the canonical foundation loader and map shape.
+Every pass projects the complete current-pin capsule set into the canonical `<slug>-foundation` loader and map shape.
 
-Every publication is recoverable after process or host failure.
+Every publication is recoverable after process or host failure. Automatic execution never emits or activates procedures.
 
 ### G-004 Honest closure
 
@@ -683,20 +683,16 @@ The scheduler remains paused until recovery finishes.
 4. Scheduler claims a repository lease.
 5. Worker verifies the Codebase Memory project.
 6. Worker records index identity and caveats.
-7. Worker loads prior inventory, notes, capsules, and targets.
-8. Worker creates a learning-note draft.
-9. Worker publishes the durable learning note.
-10. Worker studies one connected subsystem.
-11. Worker proposes five to eight outcomes or a justified smaller result.
-12. Worker gathers exact evidence for each outcome.
-13. Worker synthesizes a complete artifact generation.
-14. Validator checks shape, evidence, parity, and pressure tests.
-15. Publisher activates the artifact generation.
-16. SQL transaction records result and OpenViking outbox entries.
-17. OpenViking publisher sends the note and artifacts.
-18. OpenViking publisher performs retrieval verification.
-19. Worker updates next targets and closure matrix.
-20. Worker releases the lease and records terminal state.
+7. Worker loads bounded current-pin context: accepted seams, coverage, unresolved items, and omissions.
+8. Worker studies one connected subsystem and records an immutable pass observation with direct evidence.
+9. Worker accepts zero or more stable seam capsules; conflicting content at an existing seam identity fails closed.
+10. Worker creates and publishes a durable learning-note work record for causal ordering.
+11. Worker renders the complete current-pin `<slug>-foundation` projection, including every valid prior capsule.
+12. Validator checks foundation-only frontmatter, evidence, loader/map/disk parity, ownership, and manifest identity.
+13. Publisher stages, journals, and atomically activates the content-addressed projection, or reports it unchanged.
+14. SQL records the active projection and OpenViking outbox entries.
+15. OpenViking publisher sends the work record, accepted capsules, and materialized foundation.
+16. Worker updates closure state, releases the lease, and records terminal state.
 
 ## 12. Durability rule
 
@@ -708,23 +704,15 @@ Every side effect records an observed result.
 
 An uncertain result is reconciled before retry.
 
-## 13. Note-first rule
+## 13. Observation and note-first rule
 
-A production artifact references exactly one committed learning note.
+A pass observation is an immutable pin-scoped fact. Accepted capsules reference one observation and use stable seam identities independent of pass number.
 
-The database rejects an artifact set without `learning_note_id`.
+A production projection retains a compatibility link to exactly one committed learning-note work record. The note proves causal ordering and supports crash recovery; it is not cumulative memory and later-pass context never includes its full body.
 
-The state machine rejects synthesis before `note_published`.
+The state machine still rejects synthesis before `note_published`. Projection activation then derives only from accepted capsules at the active pin, and recovery verifies the content-addressed generation before resuming publication.
 
-The filesystem publisher rejects activation when the note file hash is absent.
-
-The artifact manifest includes the note hash.
-
-Recovery verifies the note before resuming artifact publication.
-
-This establishes causal ordering.
-
-It does not rely on timestamps alone.
+This establishes causal ordering without relying on timestamps and keeps durable facts separate from their rebuildable filesystem projection.
 
 ## 14. Repository pass budget
 

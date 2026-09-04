@@ -1,17 +1,25 @@
 defmodule LearningAgent.Artifacts.Manifest do
   @moduledoc """
-  Generation manifest + content-addressing (docs/03 §4 §21, docs/05 §20).
-  A manifest lists every file with its SHA-256 and a total manifest_digest, so
-  parity and recovery always have one deterministic artifact identity.
+  Complete foundation-projection manifest and content addressing (docs/03, docs/10).
+  A manifest lists every file with its SHA-256 and a total `manifest_digest`, so
+  unchanged detection, parity, and recovery share one deterministic identity.
   """
 
   @doc "Build a manifest for a map of {path => content}."
   def build(files) when is_map(files) do
-    entries = Enum.map(files, fn {path, content} -> {path, %{digest: digest(content)}} end)
+    entries =
+      files
+      |> Enum.map(fn {path, content} -> {path, %{digest: digest(content)}} end)
+      |> Enum.sort_by(&elem(&1, 0))
+
+    identity =
+      Enum.map_join(entries, "\n", fn {path, %{digest: file_digest}} ->
+        path <> ":" <> file_digest
+      end)
 
     %{
       files: Map.new(entries),
-      manifest_digest: digest(Enum.sort(Enum.map(entries, &elem(&1, 0))) |> Enum.join("|"))
+      manifest_digest: digest(identity)
     }
   end
 
