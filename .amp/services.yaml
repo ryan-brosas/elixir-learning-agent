@@ -1,0 +1,9 @@
+# Development services for Amp orbs (see https://ampcode.com/docs/orbs/portals).
+services:
+  web:
+    command: export LA_HTTP_PORT="$PORT" && mix ecto.migrate && exec mix run --no-halt
+    port: 4000
+    health: /health/live
+    portal:
+      title: Learning Agent
+      description: Operator API and model playground against the local dev database.

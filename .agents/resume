@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Fast post-wake check: the PostgreSQL cluster must be listening on the
+# repository's local default. No installs, no slow work. Must finish within
+# Amp's 10-second window: non-blocking start, 1-second probe timeouts, and an
+# 8-second poll deadline, leaving headroom for the final probe.
+if ! pg_isready -h 127.0.0.1 -p 5433 -t 1 -q; then
+  sudo -n systemctl --no-block start postgresql@15-main
+  deadline=$((SECONDS + 8))
+  until pg_isready -h 127.0.0.1 -p 5433 -t 1 -q; do
+    [ "$SECONDS" -ge "$deadline" ] && break
+    sleep 0.5
+  done
+fi
+pg_isready -h 127.0.0.1 -p 5433 -t 1 -q || {
+  echo "postgres not ready on 127.0.0.1:5433" >&2
+  exit 1
+}
