@@ -43,3 +43,9 @@ learning_agent-*.tar
 
 # IDE-generated dependency descriptors.
 /.idea/libraries/
+
+# Amp orb runtime files
+.amp/portals/
+
+# App runtime state (dev skills root, created by the web endpoint)
+/.agents/skills/

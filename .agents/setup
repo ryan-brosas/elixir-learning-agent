@@ -1,0 +1,201 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Orb setup for the Elixir learning agent.
+#
+# Installs the pinned toolchain (Erlang/OTP 29.0.5 + Elixir 1.20.4, matching
+# .github/workflows/pr-quality.yml), PostgreSQL listening on the repository's
+# local default 127.0.0.1:5433, and Mix dependencies for dev and test envs.
+#
+# Idempotent: a warm run from a restored snapshot only verifies what already
+# exists. Everything must terminate: PostgreSQL runs under systemd, which owns
+# it across setup and every orb restored from the snapshot. All network steps
+# are time-bounded so a stalled transfer cannot consume the setup window.
+
+log() { printf '[setup +%4ss] %s\n' "$SECONDS" "$*"; }
+
+# --max-time bounds each attempt; --retry-max-time bounds the whole retry
+# sequence so one stalled download cannot approach the 20-minute setup limit.
+CURL=(curl -fsSL --connect-timeout 15 --max-time 90 --retry 3 --retry-delay 2 --retry-max-time 90)
+
+# --- System packages --------------------------------------------------------
+# Detect the versioned server and cluster, not just the client wrappers: a
+# partial or stale installation must converge, not pass the checks and fail
+# later at the systemd/cluster steps.
+need_pkgs=()
+[ -x /usr/lib/postgresql/15/bin/postgres ] || need_pkgs+=(postgresql-15 postgresql-client-15)
+command -v pg_isready >/dev/null 2>&1 || need_pkgs+=(postgresql-client-15)
+command -v docker >/dev/null 2>&1 || need_pkgs+=(docker.io) # canonical gate: docker compose config
+command -v unzip >/dev/null 2>&1 || need_pkgs+=(unzip)
+if [ "${#need_pkgs[@]}" -gt 0 ]; then
+  step_start=$SECONDS
+  sudo apt-get update -qq
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "${need_pkgs[@]}"
+  log "apt packages: ${need_pkgs[*]} (done in $((SECONDS - step_start))s)"
+else
+  log "system packages already installed"
+fi
+
+# --- Docker Compose plugin (the canonical completion gate starts with `docker compose config`) ---
+COMPOSE_VERSION=5.5.1
+COMPOSE_PLUGIN=/usr/local/lib/docker/cli-plugins/docker-compose
+compose_version_ok() { [ "$(docker compose version --short 2>/dev/null)" = "$COMPOSE_VERSION" ]; }
+if command -v docker >/dev/null 2>&1 && ! compose_version_ok; then
+  step_start=$SECONDS
+  sudo mkdir -p "$(dirname "$COMPOSE_PLUGIN")"
+  "${CURL[@]}" "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64" -o /tmp/docker-compose
+  "${CURL[@]}" "https://github.com/docker/compose/releases/download/v${COMPOSE_VERSION}/docker-compose-linux-x86_64.sha256" -o /tmp/docker-compose.sha256
+  echo "$(awk '{print $1}' /tmp/docker-compose.sha256)  /tmp/docker-compose" | sha256sum -c - >/dev/null
+  sudo install -m 0755 /tmp/docker-compose "$COMPOSE_PLUGIN"
+  rm -f /tmp/docker-compose /tmp/docker-compose.sha256
+  compose_version_ok || { echo "docker compose v$COMPOSE_VERSION failed to install" >&2; exit 1; }
+  log "docker compose v$COMPOSE_VERSION plugin (done in $((SECONDS - step_start))s)"
+elif command -v docker >/dev/null 2>&1; then
+  log "docker compose v$COMPOSE_VERSION already available"
+else
+  log "docker still absent; skipping compose plugin"
+fi
+
+# --- Erlang/OTP (prebuilt from builds.hex.pm; Debian 12 apt only has 1.x-era Erlang) ---
+OTP_VERSION=29.0.5
+OTP_ROOT="/opt/otp-$OTP_VERSION"
+# Completion marker guards against a broken half-extracted install surviving retries.
+if [ ! -f "$OTP_ROOT/.setup-complete" ]; then
+  step_start=$SECONDS
+  sudo rm -rf "$OTP_ROOT"
+  base="https://builds.hex.pm/builds/otp/amd64/ubuntu-22.04"
+  otp_sha=$("${CURL[@]}" "$base/builds.txt" | awk -v v="OTP-$OTP_VERSION" '$1==v{print $4}')
+  [ -n "$otp_sha" ] || { echo "no sha256 for OTP-$OTP_VERSION in builds.txt" >&2; exit 1; }
+  "${CURL[@]}" "$base/OTP-$OTP_VERSION.tar.gz" -o /tmp/otp.tar.gz
+  echo "$otp_sha  /tmp/otp.tar.gz" | sha256sum -c - >/dev/null
+  sudo mkdir -p "$OTP_ROOT"
+  sudo tar xzf /tmp/otp.tar.gz -C "$OTP_ROOT" --strip-components=1
+  rm -f /tmp/otp.tar.gz
+  sudo sh -c "cd '$OTP_ROOT' && ./Install -minimal '$OTP_ROOT'" >/dev/null
+  "$OTP_ROOT/bin/erl" -noshell -eval 'halt(0).' # validate before marking complete
+  sudo touch "$OTP_ROOT/.setup-complete"
+  log "Erlang/OTP $OTP_VERSION (done in $((SECONDS - step_start))s)"
+else
+  log "Erlang/OTP $OTP_VERSION already installed"
+fi
+sudo ln -sfn "$OTP_ROOT/bin/erl" /usr/local/bin/erl
+sudo ln -sfn "$OTP_ROOT/bin/erlc" /usr/local/bin/erlc
+sudo ln -sfn "$OTP_ROOT/bin/escript" /usr/local/bin/escript
+
+# --- Elixir (precompiled for OTP 29 from the official GitHub release) ---
+ELIXIR_VERSION=1.20.4
+ELIXIR_ROOT="/opt/elixir-$ELIXIR_VERSION"
+if [ ! -f "$ELIXIR_ROOT/.setup-complete" ]; then
+  step_start=$SECONDS
+  sudo rm -rf "$ELIXIR_ROOT"
+  base="https://github.com/elixir-lang/elixir/releases/download/v$ELIXIR_VERSION"
+  "${CURL[@]}" "$base/elixir-otp-29.zip" -o /tmp/elixir.zip
+  "${CURL[@]}" "$base/elixir-otp-29.zip.sha256sum" -o /tmp/elixir.zip.sha256sum
+  echo "$(awk '{print $1}' /tmp/elixir.zip.sha256sum)  /tmp/elixir.zip" | sha256sum -c - >/dev/null
+  sudo mkdir -p "$ELIXIR_ROOT"
+  sudo unzip -q /tmp/elixir.zip -d "$ELIXIR_ROOT"
+  rm -f /tmp/elixir.zip /tmp/elixir.zip.sha256sum
+  "$ELIXIR_ROOT/bin/elixir" --version >/dev/null # validate before marking complete
+  sudo touch "$ELIXIR_ROOT/.setup-complete"
+  log "Elixir $ELIXIR_VERSION (otp-29) (done in $((SECONDS - step_start))s)"
+else
+  log "Elixir $ELIXIR_VERSION already installed"
+fi
+sudo ln -sfn "$ELIXIR_ROOT/bin/elixir" /usr/local/bin/elixir
+sudo ln -sfn "$ELIXIR_ROOT/bin/elixirc" /usr/local/bin/elixirc
+sudo ln -sfn "$ELIXIR_ROOT/bin/iex" /usr/local/bin/iex
+sudo ln -sfn "$ELIXIR_ROOT/bin/mix" /usr/local/bin/mix
+
+log "toolchain: $(elixir --version 2>/dev/null | tr '\n' ' ')"
+
+# --- PostgreSQL cluster: repository defaults (127.0.0.1:5433), tuned for speed ---
+# Converge from a partial install: apt's postinst normally creates 15/main,
+# but a stale snapshot may have the binaries without the cluster.
+if [ -x /usr/lib/postgresql/15/bin/postgres ] && [ ! -d /etc/postgresql/15/main ]; then
+  step_start=$SECONDS
+  sudo pg_createcluster 15 main
+  log "pg_createcluster 15 main (done in $((SECONDS - step_start))s)"
+fi
+PG_CONF_DIR=/etc/postgresql/15/main/conf.d
+PG_CONF="$PG_CONF_DIR/amp-orb.conf"
+sudo mkdir -p "$PG_CONF_DIR"
+tmpdir=$(mktemp -d)
+trap 'rm -rf "$tmpdir"' EXIT
+sudo tee "$tmpdir/amp-orb.conf" >/dev/null <<'PG_EOF'
+# Amp orb setup: repository local-dev defaults plus speed-over-durability tuning.
+port = 5433
+listen_addresses = '127.0.0.1'
+fsync = off
+synchronous_commit = off
+full_page_writes = off
+PG_EOF
+config_changed=0
+if ! sudo cmp -s "$PG_CONF" "$tmpdir/amp-orb.conf"; then
+  sudo install -m 0644 "$tmpdir/amp-orb.conf" "$PG_CONF"
+  config_changed=1
+fi
+
+step_start=$SECONDS
+sudo systemctl enable --now postgresql@15-main >/dev/null
+log "systemctl enable --now postgresql@15-main (done in $((SECONDS - step_start))s)"
+
+wait_pg() {
+  local i
+  for i in $(seq 1 60); do
+    pg_isready -h 127.0.0.1 -p 5433 -q && return 0
+    sleep 0.5
+  done
+  return 1
+}
+# Restart when the cluster predates the conf.d change above (already answering
+# with stale settings) or when it never came up under the old configuration.
+if ! wait_pg || [ "$config_changed" = 1 ]; then
+  log "restarting postgres cluster to apply configuration"
+  sudo systemctl restart postgresql@15-main
+fi
+wait_pg || { echo "postgres never became ready on 127.0.0.1:5433" >&2; exit 1; }
+log "postgres ready on 127.0.0.1:5433"
+
+# Role and databases match config/config.exs defaults (dev: learning_agent_dev,
+# test: learning_agent_test) and the Compose database name (learning_agent).
+PSQL=(sudo -u postgres psql -p 5433 -tAc)
+"${PSQL[@]}" "SELECT 1 FROM pg_roles WHERE rolname='learning_agent'" | grep -q 1 ||
+  sudo -u postgres psql -p 5433 -c "CREATE ROLE learning_agent LOGIN PASSWORD 'learning_agent'" >/dev/null
+# Enforce the expected auth state even on a restored snapshot with a divergent role.
+sudo -u postgres psql -p 5433 -c "ALTER ROLE learning_agent LOGIN PASSWORD 'learning_agent'" >/dev/null
+for db in learning_agent learning_agent_dev learning_agent_test; do
+  "${PSQL[@]}" "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1 ||
+    sudo -u postgres createdb -p 5433 -O learning_agent "$db"
+  db_owner=$("${PSQL[@]}" "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='$db'")
+  [ "$db_owner" = "learning_agent" ] ||
+    sudo -u postgres psql -p 5433 -c "ALTER DATABASE $db OWNER TO learning_agent" >/dev/null
+done
+log "postgres role and databases verified"
+
+# --- Mix archives, dependencies, and databases ------------------------------
+cd "$(dirname "$0")/.."
+run_step() {
+  local name="$1"; shift
+  local start=$SECONDS
+  "$@"
+  log "$name (done in $((SECONDS - start))s)"
+}
+run_step "mix local.hex / local.rebar" bash -c 'mix local.hex --force >/dev/null && mix local.rebar --force >/dev/null'
+run_step "mix deps.get" mix deps.get
+run_step "mix ecto.create + ecto.migrate (dev)" bash -c 'mix ecto.create && mix ecto.migrate'
+run_step "MIX_ENV=test ecto.create + ecto.migrate + compile" bash -c 'MIX_ENV=test mix ecto.create && MIX_ENV=test mix ecto.migrate && MIX_ENV=test mix compile'
+
+# --- Orb-specific guidance for agents --------------------------------------
+MARKER="# learning-agent orb environment"
+if ! grep -Fqx "$MARKER" "$HOME/.config/amp/AGENTS.md" 2>/dev/null; then
+  cat >> "$HOME/.config/amp/AGENTS.md" <<'GUIDE_EOF'
+
+# learning-agent orb environment
+- Erlang/OTP 29.0.5 + Elixir 1.20.4 are installed system-wide (erl, elixir, mix on PATH).
+- PostgreSQL 15 runs under systemd at 127.0.0.1:5433 (user/password: learning_agent/learning_agent).
+  Databases: learning_agent_dev (dev), learning_agent_test (test), learning_agent (compose parity).
+- Dev web endpoint: `mix run --no-halt` (or the declared `web` orb service) on LA_HTTP_PORT, default 4000.
+GUIDE_EOF
+fi
+
+log "setup complete"
